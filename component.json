@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "f8component/1",
+  "componentId": "webstudio",
+  "version": "0.1.0",
+  "title": "WebStudio",
+  "releaseRole": "webstudio",
+  "webAssets": "${F8_PACKAGE_ROOT}/web",
+  "launch": {
+    "environment": "webstudio",
+    "module": "f8studio_server",
+    "args": [
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "${F8_PORT:webstudio.http}",
+      "--web-dist",
+      "${F8_COMPONENT_ROOT}/web",
+      "--external-media-gateway",
+      "--media-gateway-url",
+      "${F8_ENDPOINT:media-gateway.http}",
+      "--exit-on-stdin-close"
+    ],
+    "distribution": "f8studio-server",
+    "env": {
+      "F8STUDIO_DATA_DIR": "${F8_DATA_ROOT}/studio"
+    }
+  },
+  "provides": [
+    {
+      "protocolId": "f8studio-api",
+      "version": "1.0"
+    }
+  ],
+  "requires": [
+    {
+      "componentId": "media-gateway",
+      "protocolId": "f8media-api",
+      "versions": ">=1,<2"
+    }
+  ],
+  "endpoints": [
+    {
+      "name": "http",
+      "url": "http://127.0.0.1:8210"
+    }
+  ],
+  "health": {
+    "endpoint": "http",
+    "path": "/api/health",
+    "service": "f8studio-server",
+    "protocolVersion": "f8studio-api/1",
+    "bootstrapPath": "/"
+  }
+}

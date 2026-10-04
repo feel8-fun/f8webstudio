@@ -1,0 +1,25 @@
+[workspace]
+name = "f8webstudio"
+channels = ["conda-forge"]
+platforms = ["linux-64", "win-64"]
+
+[dependencies]
+python = ">=3.14,<3.15"
+pip = ">=26,<27"
+
+[pypi-dependencies]
+f8studio-server = {path = "f8studio_server", editable = true}
+f8studio-core = {path = "f8studio_core", editable = true}
+f8platform = {path = ".platform", editable = true}
+f8media-protocol = {path = ".media-dependency/f8media_protocol", editable = true}
+f8pysdk = {path = ".sdk/python", editable = true}
+
+[target.linux-64.dependencies]
+pygobject = ">=3.50,<4"
+gtk3 = ">=3.24,<4"
+
+[tasks]
+serve = "python -m f8studio_server"
+
+[environments]
+webstudio = []

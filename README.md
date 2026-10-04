@@ -1,6 +1,6 @@
 # f8webstudio
 
-Independently versioned Feel8 component. This repository owns its runtime
+Independently versioned Feel8 application extension. This repository owns its runtime
 `pixi.toml`/`pixi.lock`, implementation, build inputs and publisher workflow.
 Official code retains AGPL-3.0/commercial licensing; SDK dependencies use their own license.
 

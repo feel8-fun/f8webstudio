@@ -104,7 +104,7 @@ T = TypeVar("T")
 def default_web_dist() -> Path:
     package_dir = Path(__file__).resolve().parent
     checkout = package_dir.parents[1]
-    if (checkout / "component.json").is_file():
+    if (checkout / "extension.json").is_file():
         return checkout / "build" / "web-studio"
     return package_dir / "web_dist"
 
@@ -300,7 +300,7 @@ def create_app(
             version=SERVER_VERSION,
             protocol_version=API_PROTOCOL_VERSION,
             server_epoch=studio.server_epoch,
-            component_instance=os.environ.get("F8_COMPONENT_INSTANCE"),
+            application_instance=os.environ.get("F8_APPLICATION_INSTANCE"),
         )
         return status.to_json_object()
 

@@ -9,7 +9,7 @@ dependencies = [
     "pystray>=0.19.5,<0.20",
     "pillow>=11,<13",
     "f8studio-core",
-    "f8media-protocol",
+    "f8pysdk[media]",
     "fastapi>=0.120,<1",
     "uvicorn>=0.35,<1",
     "websockets>=16,<17",

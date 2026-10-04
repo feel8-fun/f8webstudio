@@ -34,7 +34,7 @@ class AssetKind(str, enum.Enum):
     modding_recipe = "modding_recipe"
 
 
-class ComponentContent(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
+class ApplicationContent(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
     schema_version: str = COMPONENT_SCHEMA_VERSION
     nodes: tuple[GraphNode, ...] = ()
     edges: tuple[GraphEdge, ...] = ()
@@ -122,7 +122,7 @@ def _normalize_tags(tags: tuple[str, ...]) -> tuple[str, ...]:
 def _validate_content(kind: AssetKind, content: F8JsonValue) -> F8JsonValue:
     encoded = msgspec.json.encode(content)
     if kind is AssetKind.component:
-        component = msgspec.json.decode(encoded, type=ComponentContent)
+        component = msgspec.json.decode(encoded, type=ApplicationContent)
         if component.schema_version != COMPONENT_SCHEMA_VERSION:
             raise InvalidRequestError(f"unsupported component schema: {component.schema_version}")
         node_ids = {node.node_id for node in component.nodes}
@@ -442,7 +442,7 @@ __all__ = [
     "AssetRepository",
     "AssetSummary",
     "AssetVersion",
-    "ComponentContent",
+    "ApplicationContent",
     "CreateAssetRequest",
     "CreateProjectVersionRequest",
     "ProjectVersion",

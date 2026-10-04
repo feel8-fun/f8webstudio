@@ -1,5 +1,6 @@
 import frontend from './package.json';
-import backend from '../component.json';
+import catalog from '../extension.json';
+const backend = catalog.extensions[0]!;
 import react from '@vitejs/plugin-react';
 import { configDefaults, defineConfig } from 'vitest/config';
 
@@ -9,7 +10,7 @@ export default defineConfig({
     name: 'f8-component-release',
     generateBundle() {
       if (frontend.version !== backend.version) throw new Error('WebStudio frontend/backend versions must match');
-      this.emitFile({ type: 'asset', fileName: 'f8-release.json', source: JSON.stringify({ componentId: backend.componentId, version: backend.version }) });
+      this.emitFile({ type: 'asset', fileName: 'f8-release.json', source: JSON.stringify({ extensionId: backend.extensionId, version: backend.version }) });
     },
   }],
   server: {

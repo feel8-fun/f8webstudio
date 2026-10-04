@@ -11,7 +11,6 @@ pip = ">=26,<27"
 f8studio-server = {path = "f8studio_server", editable = true}
 f8studio-core = {path = "f8studio_core", editable = true}
 f8platform = {path = ".platform", editable = true}
-f8media-protocol = {path = ".media-dependency/f8media_protocol", editable = true}
 f8pysdk = {path = ".sdk/python", editable = true}
 
 [target.linux-64.dependencies]

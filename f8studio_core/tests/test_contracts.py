@@ -16,6 +16,7 @@ def test_health_status_uses_explicit_wire_names() -> None:
         "version": "0.1.0",
         "protocol_version": "f8studio-api/1",
         "server_epoch": "epoch-1",
+        "application_instance": None,
     }
 
 

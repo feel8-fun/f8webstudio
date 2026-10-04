@@ -17,7 +17,7 @@ class HealthStatus:
     version: str
     protocol_version: str
     server_epoch: str
-    component_instance: str | None = None
+    application_instance: str | None = None
 
     def to_json_object(self) -> JsonObject:
         return asdict(self)

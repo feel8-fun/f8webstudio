@@ -1193,6 +1193,26 @@ export type F8AnyTypeSchemaInput = {
   readonly "$comment"?: string;
 };
 
+export type F8ApplicationRecord = {
+  readonly "componentId": string;
+  readonly "name": string;
+  readonly "content": Readonly<Record<string, JsonValue>>;
+  readonly "description"?: string;
+  readonly "tags"?: ReadonlyArray<string>;
+  readonly "createdAt"?: string;
+  readonly "updatedAt"?: string;
+};
+
+export type F8ApplicationRecordInput = {
+  readonly "componentId": string;
+  readonly "name": string;
+  readonly "content": Readonly<Record<string, JsonValue>>;
+  readonly "description"?: string;
+  readonly "tags"?: ReadonlyArray<string>;
+  readonly "createdAt"?: string;
+  readonly "updatedAt"?: string;
+};
+
 export type F8ArrayTypeSchema = {
   readonly "type": "array";
   readonly "title"?: string;
@@ -1359,26 +1379,6 @@ export type F8ComplexObjectTypeSchemaInput = {
   readonly "properties": Readonly<Record<string, F8StringTypeSchemaInput | F8NumberTypeSchemaInput | F8IntegerTypeSchemaInput | F8BooleanTypeSchemaInput | F8NullTypeSchemaInput | F8ComplexObjectTypeSchemaInput | F8ArrayTypeSchemaInput | F8AnyTypeSchemaInput>>;
   readonly "required"?: ReadonlyArray<string>;
   readonly "additionalProperties"?: boolean;
-};
-
-export type F8ComponentRecord = {
-  readonly "componentId": string;
-  readonly "name": string;
-  readonly "content": Readonly<Record<string, JsonValue>>;
-  readonly "description"?: string;
-  readonly "tags"?: ReadonlyArray<string>;
-  readonly "createdAt"?: string;
-  readonly "updatedAt"?: string;
-};
-
-export type F8ComponentRecordInput = {
-  readonly "componentId": string;
-  readonly "name": string;
-  readonly "content": Readonly<Record<string, JsonValue>>;
-  readonly "description"?: string;
-  readonly "tags"?: ReadonlyArray<string>;
-  readonly "createdAt"?: string;
-  readonly "updatedAt"?: string;
 };
 
 export type F8DataPayloadSpec = {
@@ -2607,7 +2607,7 @@ export type HealthStatus = {
   readonly "version": string;
   readonly "protocol_version": string;
   readonly "server_epoch": string;
-  readonly "component_instance": string | null;
+  readonly "application_instance": string | null;
 };
 
 export type HealthStatusInput = {
@@ -2616,7 +2616,7 @@ export type HealthStatusInput = {
   readonly "version": string;
   readonly "protocol_version": string;
   readonly "server_epoch": string;
-  readonly "component_instance"?: string | null;
+  readonly "application_instance"?: string | null;
 };
 
 export type HistoryRequest = {
@@ -2742,7 +2742,7 @@ export type MediaGatewayHealth = {
   readonly "protocolVersion": string;
   readonly "gatewayEpoch": string;
   readonly "processId": number;
-  readonly "componentInstance": string | null;
+  readonly "applicationInstance": string | null;
 };
 
 export type MediaGatewayHealthInput = {
@@ -2752,7 +2752,7 @@ export type MediaGatewayHealthInput = {
   readonly "protocolVersion": string;
   readonly "gatewayEpoch": string;
   readonly "processId": number;
-  readonly "componentInstance"?: string | null;
+  readonly "applicationInstance"?: string | null;
 };
 
 export type MediaMetrics = {

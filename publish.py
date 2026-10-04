@@ -1,4 +1,4 @@
-"""Publish WebStudio frontend and backend as one indivisible component."""
+"""Publish WebStudio frontend and backend as one indivisible extension."""
 from pathlib import Path
 import hashlib
 import json
@@ -8,13 +8,13 @@ import sys
 import tempfile
 from typing import Literal
 
-from f8pysdk.component_package import read_component
-from f8pysdk.component_packaging import build_component
+from f8pysdk.application_package import read_application
+from f8pysdk.extension_packaging import build_extension
 
 
 def main() -> None:
     root = Path(__file__).resolve().parent
-    manifest = read_component(root)
+    manifest = read_application(root)
     frontend = json.loads((root / 'f8studio_web/package.json').read_text())
     if frontend['version'] != manifest.version:
         raise ValueError('Frontend version must match WebStudio release')
@@ -35,8 +35,8 @@ def main() -> None:
     if len(candidates) != 1:
         raise ValueError('Expected one WebStudio backend wheel for this version')
     platform: Literal['linux-x86_64', 'windows-x86_64'] = 'windows-x86_64' if sys.platform == 'win32' else 'linux-x86_64'
-    output = build_component(root, candidates[0], root / f'dist/webstudio-{manifest.version}-{platform}.zip',
-                             web_assets=assets, platform=platform)
+    output = build_extension(root, root / f'dist/webstudio-{manifest.version}-{platform}.zip',
+                             wheel=candidates[0], web_assets=assets)
     output.with_suffix('.zip.sha256').write_text(hashlib.sha256(output.read_bytes()).hexdigest() + '  ' + output.name + '\n')
     print(output)
 

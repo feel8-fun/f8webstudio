@@ -1017,13 +1017,13 @@ def test_graph_import_rejects_stale_layout_revision(tmp_path: Path) -> None:
 def test_default_web_dist_uses_build_directory_in_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import f8studio_server.app as app_module
 
-    package = tmp_path / "packages" / "f8webstudio" / "f8studio_server" / "f8studio_server"
+    package = tmp_path / "extensions" / "f8webstudio" / "f8studio_server" / "f8studio_server"
     legacy_bundle = package / "web_dist"
     legacy_bundle.mkdir(parents=True)
     (legacy_bundle / "index.html").write_text("stale")
-    (tmp_path / "packages/f8webstudio/component.json").write_text("{}")
+    (tmp_path / "extensions/f8webstudio/extension.json").write_text("{}")
     monkeypatch.setattr(app_module, "__file__", str(package / "app.py"))
-    assert app_module.default_web_dist() == tmp_path / "packages/f8webstudio/build/web-studio"
+    assert app_module.default_web_dist() == tmp_path / "extensions/f8webstudio/build/web-studio"
 
 
 def test_default_web_dist_uses_embedded_assets_when_installed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

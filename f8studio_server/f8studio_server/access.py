@@ -89,12 +89,16 @@ class StudioAccessMiddleware:
             token = "" if cookie is None else cookie.value
         authenticated = secrets.compare_digest(token.encode("utf-8"), self.access.token.encode("utf-8"))
         path = scope.get("path", "")
-        # Local browser bootstrap only, never a remote or cross-site token endpoint.
+        # Platform and Studio use different loopback ports. Browser navigation
+        # between them is same-site, even though their origins differ.
+        # Keep this limited to a local document navigation, never cross-site fetch.
         host = urlsplit(f"http://{headers.get('host', '')}").hostname or ""
         peer = scope.get("client")
         local = peer is not None and _loopback(peer[0]) and _loopback(host)
         bootstrap = (scope["type"] == "http" and scope.get("method") == "GET" and path == "/"
-                     and local and headers.get("sec-fetch-site", "none") in {"none", "same-origin"})
+                     and local and headers.get("sec-fetch-site", "none") in {"none", "same-origin", "same-site"}
+                     and headers.get("sec-fetch-mode", "navigate") == "navigate"
+                     and headers.get("sec-fetch-dest", "document") == "document")
         if bootstrap:
             async def send_cookie(message: Message) -> None:
                 if message["type"] == "http.response.start":

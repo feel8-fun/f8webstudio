@@ -625,11 +625,14 @@ def test_application_shutdown_closes_active_audio_sessions(tmp_path: Path) -> No
 
 
 def test_overlay_api_validates_identity_and_reports_monitor_metrics(tmp_path: Path) -> None:
+    gateway = RemoteMediaGateway(RemoteMediaGatewayConfig(base_url='http://testserver', manage_process=False),
+        client=httpx.AsyncClient(transport=httpx.ASGITransport(app=create_media_gateway_app()), base_url='http://testserver'))
     app = create_app(
         web_dist=tmp_path,
         data_dir=tmp_path / "data",
         runtime=FakeRuntimeGateway(),
         service_roots=(),
+        media_gateway=gateway,
     )
     payload = {
         "source": "f8/test/video",

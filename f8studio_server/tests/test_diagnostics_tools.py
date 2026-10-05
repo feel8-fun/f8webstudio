@@ -11,7 +11,8 @@ import pytest
 from f8studio_server.errors import ConflictError
 from f8platform.environments import EnvironmentManager
 from f8platform.extensions import ExtensionManager
-from f8studio_server.extension_tools import ExtensionTools, ToolRunRequest
+from f8platform.tools import ExtensionTools
+from f8pysdk.tool_spec import ToolRunRequest
 
 
 def test_diagnostics_install_execution_and_disable_use_generic_extension_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

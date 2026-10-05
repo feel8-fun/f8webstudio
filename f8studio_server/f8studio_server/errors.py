@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from starlette.responses import JSONResponse
 
 
-from f8platform.errors import (
+from f8pysdk.platform_errors import (
     InvalidRequestError as InvalidRequestError,
     NotFoundError as NotFoundError,
     ConflictError as ConflictError,

@@ -118,6 +118,16 @@ export function ExtensionDetails({ location, onNavigate, refreshRevision }: {
     { title: 'Skills', icon: FileText, kind: 'skill' as const, items: detail.skills.map((item) => ({ id: item.skillId, name: item.skillId, description: 'View agent instructions' })) },
   ];
   return <div className="extension-capability-groups">
+    {detail.application && <section className="extension-content" aria-label="Application">
+      <h2>Application</h2>
+      <p>Launched and supervised by Feel8 Platform.</p>
+      <dl className="extension-definition-list">
+        <dt>Runtime</dt><dd>{detail.application.launch.environment}</dd>
+        <dt>Provides</dt><dd>{detail.application.provides.map((protocol) => `${protocol.protocolId} ${protocol.version}`).join(', ')}</dd>
+        <dt>Requires</dt><dd>{detail.application.requires.map((dependency) => `${dependency.extensionId} · ${dependency.protocolId} ${dependency.versions}`).join(', ') || 'None'}</dd>
+        <dt>Endpoints</dt><dd>{detail.application.endpoints.map((endpoint) => <div key={endpoint.name}>{endpoint.name}: {endpoint.url}</div>)}</dd>
+      </dl>
+    </section>}
     {groups.map(({ title, icon: Icon, kind, items }) => <section className="extension-content" key={kind} aria-label={title}>
       <h2><Icon size={18} />{title}<span>{items.length}</span></h2>
       {items.map((item) => <ExtensionLink className="extension-capability-link" key={item.id} location={{ ...base, kind, itemId: item.id }} onNavigate={onNavigate}>

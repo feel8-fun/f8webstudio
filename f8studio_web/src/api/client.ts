@@ -80,6 +80,7 @@ async function requestJson(path: string, init?: RequestInit, ignoreNotFound = fa
     let message = `Request failed with HTTP ${response.status}`;
     let code: string | null = null;
     const detail = isObject(body) && 'detail' in body ? body.detail : body;
+    if (isObject(body) && typeof body.message === 'string') message = body.message;
     if (typeof detail === 'string') message = detail;
     if (Array.isArray(detail)) {
       message = detail.map((entry: unknown) => isObject(entry) && typeof entry.msg === 'string'
@@ -328,10 +329,30 @@ export async function fetchExtensionDetail(extensionId: string, signal?: AbortSi
   return body as unknown as Wire.ExtensionDetail;
 }
 
-export async function importExtensionPackage(url: string, sha256: string): Promise<readonly ExtensionStatus[]> {
-  const body = await requestJson('/api/extensions/import', jsonRequest('POST /api/extensions/import', { url, sha256 }));
-  if (!Array.isArray(body) || !body.every(isExtensionStatus)) throw new Error('Invalid extension catalog');
-  return body;
+function managementJobResponse(body: unknown): Wire.ManagementJob {
+  if (!isObject(body) || typeof body.jobId !== 'string' || !isObject(body.request) ||
+      !['queued', 'running', 'succeeded', 'failed', 'cancelled'].includes(String(body.state))) throw new Error('Invalid maintenance task');
+  return body as Wire.ManagementJob;
+}
+
+export async function fetchManagementJobs(signal?: AbortSignal): Promise<readonly Wire.ManagementJob[]> {
+  const body = await requestJson('/api/management-jobs', { signal });
+  if (!Array.isArray(body)) throw new Error('Invalid maintenance task list');
+  return body.map(managementJobResponse);
+}
+
+export async function cancelManagementJob(jobId: string): Promise<Wire.ManagementJob> {
+  return managementJobResponse(await requestJson(`/api/management-jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }));
+}
+
+export async function fetchManagementJobLogs(jobId: string, signal?: AbortSignal): Promise<Wire.ManagementJobLog> {
+  const body = await requestJson(`/api/management-jobs/${encodeURIComponent(jobId)}/logs`, { signal });
+  if (!isObject(body) || typeof body.log !== 'string') throw new Error('Invalid maintenance task logs');
+  return body as Wire.ManagementJobLog;
+}
+
+export async function importExtensionPackage(url: string, sha256: string): Promise<Wire.ManagementJob> {
+  return managementJobResponse(await requestJson('/api/extensions/import', jsonRequest('POST /api/extensions/import', { url, sha256 })));
 }
 
 function isEnvironmentStatus(value: unknown): value is EnvironmentStatus {
@@ -341,10 +362,6 @@ function isEnvironmentStatus(value: unknown): value is EnvironmentStatus {
     (value.state === undefined || ['declared', 'preparing', 'ready', 'changed', 'missing', 'failed'].includes(String(value.state)));
 }
 
-function environmentStatusResponse(body: unknown): EnvironmentStatus {
-  if (!isEnvironmentStatus(body)) throw new Error('Invalid environment status');
-  return body;
-}
 
 export async function fetchEnvironments(signal?: AbortSignal): Promise<readonly EnvironmentStatus[]> {
   const body = await requestJson('/api/environments', { signal });
@@ -352,16 +369,12 @@ export async function fetchEnvironments(signal?: AbortSignal): Promise<readonly 
   return body;
 }
 
-export async function createEnvironment(input: Wire.EnvironmentCreateRequestInput): Promise<EnvironmentStatus> {
-  return environmentStatusResponse(await requestJson('/api/environments', jsonRequest('POST /api/environments', input)));
+export async function prepareEnvironment(environmentId: string): Promise<Wire.ManagementJob> {
+  return managementJobResponse(await requestJson(`/api/environments/${encodeURIComponent(environmentId)}/prepare`, { method: 'POST' }));
 }
 
-export async function prepareEnvironment(environmentId: string): Promise<EnvironmentStatus> {
-  return environmentStatusResponse(await requestJson(`/api/environments/${encodeURIComponent(environmentId)}/prepare`, { method: 'POST' }));
-}
-
-export async function cancelEnvironmentPreparation(environmentId: string): Promise<EnvironmentStatus> {
-  return environmentStatusResponse(await requestJson(`/api/environments/${encodeURIComponent(environmentId)}/cancel`, { method: 'POST' }));
+export async function cancelEnvironmentPreparation(environmentId: string): Promise<Wire.ManagementJob> {
+  return managementJobResponse(await requestJson(`/api/environments/${encodeURIComponent(environmentId)}/cancel`, { method: 'POST' }));
 }
 
 export async function fetchEnvironmentDetail(environmentId: string, signal?: AbortSignal): Promise<Wire.EnvironmentDetail> {
@@ -371,13 +384,8 @@ export async function fetchEnvironmentDetail(environmentId: string, signal?: Abo
   return body as Wire.EnvironmentDetail;
 }
 
-export async function retainEnvironment(environmentId: string, pinned: boolean): Promise<EnvironmentStatus> {
-  return environmentStatusResponse(await requestJson(`/api/environments/${encodeURIComponent(environmentId)}/retention`,
-    jsonRequest('PUT /api/environments/{environment_id}/retention', { pinned })));
-}
-
-export async function removeEnvironment(environmentId: string): Promise<void> {
-  await requestJson(`/api/environments/${encodeURIComponent(environmentId)}`, { method: 'DELETE' });
+export async function removeEnvironment(environmentId: string): Promise<Wire.ManagementJob> {
+  return managementJobResponse(await requestJson(`/api/environments/${encodeURIComponent(environmentId)}`, { method: 'DELETE' }));
 }
 
 function runtimeStorageResponse(body: unknown): Wire.RuntimeStorageStatus {
@@ -386,44 +394,37 @@ function runtimeStorageResponse(body: unknown): Wire.RuntimeStorageStatus {
   return body as Wire.RuntimeStorageStatus;
 }
 
-export async function fetchRuntimeStorage(signal?: AbortSignal): Promise<Wire.RuntimeStorageStatus> {
-  return runtimeStorageResponse(await requestJson('/api/environments/storage', { signal }));
+export async function fetchRuntimeStorage(signal?: AbortSignal, refresh = false): Promise<Wire.RuntimeStorageStatus> {
+  return runtimeStorageResponse(await requestJson(`/api/environments/storage${refresh ? '?refresh=true' : ''}`, { signal }));
+}
+
+export async function cleanUnusedEnvironments(): Promise<Wire.ManagementJob> {
+  return managementJobResponse(await requestJson('/api/environments/unused/clean', { method: 'POST' }));
 }
 
 export async function setRuntimeStorage(path: string): Promise<Wire.RuntimeStorageStatus> {
   return runtimeStorageResponse(await requestJson('/api/environments/storage', jsonRequest('PUT /api/environments/storage', { path })));
 }
 
-export async function selectExtensionRuntime(extensionId: string, environmentId: string | null): Promise<ExtensionStatus> {
-  const body = await requestJson(`/api/extensions/${encodeURIComponent(extensionId)}/runtime`,
-    jsonRequest('PUT /api/extensions/{extension_id}/runtime', { environmentId }));
-  if (!isExtensionStatus(body)) throw new Error('Invalid extension status');
-  return body;
-}
-
-export async function installExtension(extensionId: string): Promise<ExtensionStatus> {
+export async function installExtension(extensionId: string): Promise<Wire.ManagementJob> {
   const body = await requestJson(`/api/extensions/${encodeURIComponent(extensionId)}/install`, { method: 'POST' });
-  if (!isExtensionStatus(body)) throw new Error('Invalid extension status');
-  return body;
+  return managementJobResponse(body);
 }
 
-export async function cancelExtensionInstall(extensionId: string): Promise<ExtensionStatus> {
+export async function cancelExtensionInstall(extensionId: string): Promise<Wire.ManagementJob> {
   const body = await requestJson(`/api/extensions/${encodeURIComponent(extensionId)}/cancel`, { method: 'POST' });
-  if (!isExtensionStatus(body)) throw new Error('Invalid extension status');
-  return body;
+  return managementJobResponse(body);
 }
 
-export async function setExtensionEnabled(extensionId: string, enabled: boolean): Promise<ExtensionStatus> {
+export async function setExtensionEnabled(extensionId: string, enabled: boolean): Promise<Wire.ManagementJob> {
   const body = await requestJson(`/api/extensions/${encodeURIComponent(extensionId)}/enabled`,
     jsonRequest('PUT /api/extensions/{extension_id}/enabled', { enabled }));
-  if (!isExtensionStatus(body)) throw new Error('Invalid extension status');
-  return body;
+  return managementJobResponse(body);
 }
 
-export async function uninstallExtension(extensionId: string): Promise<ExtensionStatus> {
+export async function uninstallExtension(extensionId: string): Promise<Wire.ManagementJob> {
   const body = await requestJson(`/api/extensions/${encodeURIComponent(extensionId)}`, { method: 'DELETE' });
-  if (!isExtensionStatus(body)) throw new Error('Invalid extension status');
-  return body;
+  return managementJobResponse(body);
 }
 
 export type CreateCatalogNodeInput = Wire.CreateCatalogNodeRequestInput;
@@ -815,4 +816,9 @@ export async function cancelToolJob(jobId: string): Promise<Wire.ToolJob> {
   const body = await requestJson(`/api/tool-jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
   if (!isToolJob(body)) throw new Error('Invalid tool job');
   return body;
+}
+
+
+export async function setApplicationRunning(extensionId: string, running: boolean, source: boolean): Promise<void> {
+  await requestJson(`/api/${source ? 'source-applications' : 'applications'}/${encodeURIComponent(extensionId)}/${running ? 'start' : 'stop'}`, { method: 'POST' });
 }

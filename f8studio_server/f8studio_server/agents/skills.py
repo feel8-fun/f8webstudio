@@ -12,8 +12,9 @@ _MAX_SKILL_BYTES = 64 * 1024
 
 
 class AgentSkillLibrary:
-    def __init__(self, *, user_root: Path, extension_files: Callable[[], Mapping[str, Path]] | None = None) -> None:
+    def __init__(self, *, user_root: Path, extension_files: Callable[[], Mapping[str, Path]] | None = None, extension_content: Callable[[], Mapping[str, str]] | None = None) -> None:
         self._extension_files: Callable[[], Mapping[str, Path]] = extension_files or self._empty_extension_files
+        self._extension_content = extension_content
         self._user_root = user_root.resolve()
         self._bundled_root = (Path(__file__).parent / "skills").resolve()
         self._user_root.mkdir(parents=True, exist_ok=True)
@@ -32,10 +33,17 @@ class AgentSkillLibrary:
                 if path.is_dir() and _SKILL_ID.fullmatch(path.name) and (path / "SKILL.md").is_file()
             )
         names.update(self._extension_files())
+        if self._extension_content is not None:
+            names.update(self._extension_content())
         return tuple(sorted(names))
 
     def read(self, skill_id: str) -> str:
         if ':' in skill_id:
+            if self._extension_content is not None:
+                content = self._extension_content().get(skill_id)
+                if content is None:
+                    raise NotFoundError(f'extension skill is unavailable: {skill_id}')
+                return content
             path = self._extension_files().get(skill_id)
             if path is None:
                 raise NotFoundError(f'extension skill is unavailable: {skill_id}')

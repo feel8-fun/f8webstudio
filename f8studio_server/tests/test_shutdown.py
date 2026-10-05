@@ -14,10 +14,10 @@ from urllib.request import Request, urlopen
 from websockets.sync.client import connect
 
 from f8studio_server.server_instance import single_server_instance
-from f8studio_server.tray import stop_process
+from f8platform.tray import stop_process
 
 
-def test_parent_exit_with_idle_browser_connections_releases_instance_lock(tmp_path: Path) -> None:
+def test_parent_exit_with_idle_browser_connections_releases_instance_lock(tmp_path: Path, platform_daemon: Path, media_gateway_daemon: str) -> None:
     with socket.socket() as reservation:
         reservation.bind(('127.0.0.1', 0))
         port = reservation.getsockname()[1]
@@ -27,9 +27,10 @@ def test_parent_exit_with_idle_browser_connections_releases_instance_lock(tmp_pa
         with log_path.open('wb') as output:
             process = subprocess.Popen(
                 [sys.executable, '-m', 'f8studio_server', '--no-browser', '--port', str(port),
-                 '--exit-on-stdin-close'],
+                 '--exit-on-stdin-close', '--external-media-gateway', '--media-gateway-url', media_gateway_daemon],
                 stdin=subprocess.PIPE, stdout=output, stderr=subprocess.STDOUT,
-                env={**os.environ, 'F8STUDIO_DATA_DIR': str(tmp_path)},
+                env={**os.environ, 'F8STUDIO_DATA_DIR': str(tmp_path),
+                     'F8_PLATFORM_CONNECTION_FILE': str(platform_daemon), 'F8_APPLICATION_INSTANCE': 'test-launcher-child'},
             )
             try:
                 deadline = time.monotonic() + 30
@@ -65,5 +66,7 @@ def test_parent_exit_with_idle_browser_connections_releases_instance_lock(tmp_pa
         log = log_path.read_text()
         assert 'Traceback' not in log, log
         assert 'timeout graceful shutdown exceeded' not in log, log
-        # Both the server and its managed gateway must finish.
-        assert log.count('Finished server process') == 2, log
+        # Studio shutdown does not own the external gateway.
+        assert log.count('Finished server process') == 1, log
+        with urlopen(media_gateway_daemon + '/api/health', timeout=1) as response:
+            assert response.status == 200

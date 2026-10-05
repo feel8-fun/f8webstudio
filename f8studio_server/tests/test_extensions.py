@@ -34,9 +34,8 @@ from f8platform.extensions import ExtensionManager
 from f8platform.shared_dependencies import (
     InstalledDistribution, RuntimeProbe, check_dependencies, validate_shared_package,
 )
-from f8studio_server.events import EventJournal
-from f8studio_server.processes import ManagedServiceProcesses
-from f8studio_server.runtime import RuntimeConfig
+from f8platform.services import PlatformServices
+from f8pysdk.platform_spec import ServiceStartRequest as PlatformServiceStart
 
 
 def _fixture(tmp_path: Path, *, kind: str = 'native', preinstalled: bool = False,
@@ -247,7 +246,7 @@ def test_published_shared_extension_uses_official_python_without_installing_depe
         assert '/ambient/path/must/be/ignored' not in identity['paths']
         assert len(catalog.snapshot().services) == 1
         assert manager.environment_statuses()[0].ready
-        assert manager.preset_environments()[0].environment == 'studio-runtime'
+        assert manager.environment_statuses()[0].name == 'studio-runtime'
         assert (source / 'pixi.lock').read_bytes() == original_lock
         assert not manager.environments.root.exists()
         reloaded = ExtensionManager(tmp_path / 'data', base_index=source / 'config/service-index.json')
@@ -319,13 +318,13 @@ def test_imported_catalog_cannot_replace_official_environment_definitions(tmp_pa
     (payload / 'pixi.toml').write_text('[environments]\nmalicious = { features = [] }\n')
     manager._add_catalog(payload, preinstalled=False)
     assert manager._payloads['player'].environments.official is manager.environments.official
-    assert [preset.environment for preset in manager.preset_environments()] == ['studio-runtime', 'onnx']
+    assert manager.environments.preset_names() == ('studio-runtime', 'onnx')
 
 
 def test_shared_extension_requires_an_available_official_runtime(tmp_path: Path) -> None:
     manager, _source, payload = _shared_fixture(tmp_path)
     manager._add_catalog(payload, preinstalled=False)
-    assert not manager.preset_environments()[0].ready
+    assert not any(status.ready for status in manager.environment_statuses())
     with pytest.raises(InvalidRequestError, match='not installed'):
         manager.install_plan('player')
     (payload / 'config/extensions.json').write_text((payload / 'config/extensions.json').read_text().replace(
@@ -613,14 +612,24 @@ def test_manifest_rejects_duplicate_service_owners_and_unknown_extensions(tmp_pa
         ExtensionManager(tmp_path / 'bad-data', base_index=source / 'config/service-index.json')
 
 
-def test_generic_extension_api_and_plans(tmp_path: Path) -> None:
+def test_generic_extension_api_and_plans(tmp_path: Path, platform_connection) -> None:
     manager, _source = _fixture(tmp_path, preinstalled=True)
-    with patch('f8studio_server.application.ExtensionManager', return_value=manager):
-        studio = StudioApplication(data_dir=tmp_path / 'studio')
+    studio = StudioApplication(data_dir=tmp_path / 'studio', platform=platform_connection(source_index=_source / 'config/service-index.json'))
     app = create_app(web_dist=tmp_path, application=studio)
 
     async def exercise() -> None:
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://localhost') as client:
+            async def completed(response: httpx.Response) -> None:
+                assert response.status_code == 202, response.text
+                identifier = response.json()['jobId']
+                deadline = time.monotonic() + 5
+                while True:
+                    job = (await client.get(f'/api/management-jobs/{identifier}')).json()
+                    if job['state'] not in {'queued', 'running'}:
+                        assert job['state'] == 'succeeded', job
+                        return
+                    assert time.monotonic() < deadline, job
+                    await asyncio.sleep(0.01)
             assert len((await client.get('/api/extensions')).json()) == 2
             assert (await client.post('/api/projects', json={'projectId': 'keep', 'name': 'Keep'})).status_code == 201
             node = (await client.post('/api/catalog/nodes', json={
@@ -637,15 +646,18 @@ def test_generic_extension_api_and_plans(tmp_path: Path) -> None:
             assert detail['extensionId'] == 'alpha'
             assert detail['services'][0]['describe']['service']['serviceClass'] == 'test.alpha'
             assert (await client.get('/api/environments')).json() == []
-            assert (await client.get('/api/environments/presets')).json() == [{'environment': 'shared', 'ready': False}]
-            assert (await client.put('/api/extensions/beta/enabled', json={'enabled': False})).json()['state'] == 'disabled'
-            assert (await client.delete('/api/extensions/beta')).json()['state'] == 'available'
+            assert (await client.get('/api/environments/presets')).status_code in {404, 405}
+            await completed(await client.put('/api/extensions/beta/enabled', json={'enabled': False}))
+            assert next(item for item in (await client.get('/api/extensions')).json() if item['extensionId'] == 'beta')['state'] == 'disabled'
+            await completed(await client.delete('/api/extensions/beta'))
+            assert next(item for item in (await client.get('/api/extensions')).json() if item['extensionId'] == 'beta')['state'] == 'available'
+            assert all(job['state'] == 'succeeded' for job in (await client.get('/api/management-jobs')).json())
             assert (await client.get('/api/projects/keep')).json() == saved_project
             assert (await client.get('/api/extensions/missing/plan')).status_code == 404
             assert (await client.get('/api/extensions/missing/detail')).status_code == 404
             assert (await client.post('/api/extensions/missing/install')).status_code == 404
             assert (await client.put('/api/extensions/alpha/enabled', json={})).status_code == 422
-            assert (await client.post('/api/extensions/import', json={'url': 'http://insecure.example/ext.zip', 'sha256': 'a' * 64})).status_code == 422
+            assert (await client.post('/api/extensions/import', json={'url': 'http://insecure.example/ext.zip', 'sha256': 'a' * 64})).status_code == 400
 
     try:
         asyncio.run(exercise())
@@ -694,6 +706,9 @@ def test_published_extension_is_imported_installed_and_restored_from_its_own_pay
         assert len(statuses) == 3
         assert manager.status('player').state == 'available'
         assert not manager.status('player').preinstalled
+        assert not manager.status('player').source_checkout
+        assert manager.status('player').source_path is None
+        assert manager.status('player').release_sha256 == request.sha256
         assert catalog.snapshot().services == ()
         await _finish(manager, 'player', catalog)
         assert [item.serviceClass for item in catalog.snapshot().services] == ['test.player']
@@ -701,6 +716,8 @@ def test_published_extension_is_imported_installed_and_restored_from_its_own_pay
     asyncio.run(exercise())
     reloaded = ExtensionManager(tmp_path / 'data', base_index=source / 'config/service-index.json')
     assert reloaded.status('player').state == 'installed'
+    assert not reloaded.status('player').source_checkout
+    assert reloaded.status('player').release_sha256 == request.sha256
     assert len(reloaded.statuses()) == 3
 
 
@@ -769,8 +786,7 @@ def test_undeclared_environment_is_rejected_before_installation(tmp_path: Path) 
 def test_starting_service_blocks_uninstall_and_disabled_service_cannot_start(tmp_path: Path) -> None:
     manager, _source = _fixture(tmp_path, preinstalled=True)
     catalog = CatalogService(extension_indexes=manager.active_indexes)
-    processes = ManagedServiceProcesses(catalog=catalog, runtime_config=RuntimeConfig(),
-                                        events=EventJournal(server_epoch='test'), service_enabled=manager.service_enabled)
+    processes = PlatformServices(manager, catalog.sdk_catalog)
     started, release = Event(), Event()
 
     def start(*_args: object, **_kwargs: object) -> None:
@@ -778,9 +794,9 @@ def test_starting_service_blocks_uninstall_and_disabled_service_cannot_start(tmp
         release.wait(5)
 
     async def exercise() -> None:
-        with patch.object(processes._manager, 'start', side_effect=start), \
-             patch.object(processes._manager, 'is_running', return_value=False):
-            task = asyncio.create_task(processes.start('alpha', service_class='test.alpha'))
+        with patch.object(processes.manager, 'start', side_effect=start), \
+             patch.object(processes.manager, 'is_running', return_value=False):
+            task = asyncio.create_task(processes.start('alpha', PlatformServiceStart(service_class='test.alpha')))
             try:
                 assert await asyncio.to_thread(started.wait, 2)
                 with pytest.raises(ConflictError, match='Stop running services'):
@@ -789,9 +805,9 @@ def test_starting_service_blocks_uninstall_and_disabled_service_cannot_start(tmp
                 release.set()
                 await task
         await manager.set_enabled('alpha', False, catalog.refresh, processes.is_class_running)
-        with patch.object(processes._manager, 'start') as launch:
+        with patch.object(processes.manager, 'start') as launch:
             with pytest.raises(ConflictError, match='disabled or uninstalled'):
-                await processes.start('alpha', service_class='test.alpha')
+                await processes.start('alpha', PlatformServiceStart(service_class='test.alpha'))
             launch.assert_not_called()
 
     asyncio.run(exercise())
@@ -799,8 +815,7 @@ def test_starting_service_blocks_uninstall_and_disabled_service_cannot_start(tmp
 
 def test_cancelled_service_start_waits_for_thread_and_stops_spawned_process(tmp_path: Path) -> None:
     manager, _source = _fixture(tmp_path, preinstalled=True)
-    processes = ManagedServiceProcesses(catalog=CatalogService(extension_indexes=manager.active_indexes),
-                                        runtime_config=RuntimeConfig(), events=EventJournal(server_epoch='test'))
+    processes = PlatformServices(manager, CatalogService(extension_indexes=manager.active_indexes).sdk_catalog)
     started, release = Event(), Event()
 
     def start(*_args: object, **_kwargs: object) -> None:
@@ -808,16 +823,16 @@ def test_cancelled_service_start_waits_for_thread_and_stops_spawned_process(tmp_
         release.wait(5)
 
     async def exercise() -> None:
-        with patch.object(processes._manager, 'start', side_effect=start), \
-             patch.object(processes._manager, 'stop', return_value=True) as stop:
-            task = asyncio.create_task(processes.start('alpha', service_class='test.alpha'))
+        with patch.object(processes.manager, 'start', side_effect=start), \
+             patch.object(processes.manager, 'stop', return_value=True) as stop:
+            task = asyncio.create_task(processes.start('alpha', PlatformServiceStart(service_class='test.alpha')))
             assert await asyncio.to_thread(started.wait, 2)
             task.cancel()
             release.set()
             with pytest.raises(asyncio.CancelledError):
                 await task
             stop.assert_called_once_with('alpha')
-            assert not processes._starting_classes
+            assert not processes._starting
 
     asyncio.run(exercise())
 
@@ -898,27 +913,6 @@ def test_workspace_inventory_groups_stale_and_current_records_by_environment(tmp
         assert inventory[0].service_classes == ('test.alpha', 'test.beta')
 
 
-def test_explicit_runtime_selection_survives_restart_and_checks_dependencies(tmp_path: Path) -> None:
-    manager, source, payload = _shared_fixture(tmp_path)
-    archive = _archive({str(path.relative_to(payload)): path.read_bytes() for path in payload.rglob('*') if path.is_file()})
-    request = ExtensionImportRequest(url=DownloadResponse.url, sha256=hashlib.sha256(archive).hexdigest())
-    catalog = CatalogService(extension_indexes=manager.active_indexes)
-    async def exercise() -> None:
-        with patch('f8platform.extension_artifacts.urllib.request.urlopen', return_value=DownloadResponse(archive)):
-            await manager.import_package(request)
-        environment = manager.environment_statuses()[0]
-        await manager.select_runtime('player', environment.environment_id)
-        await _finish(manager, 'player', catalog)
-        assert manager.status('player').runtime_selectable
-        with pytest.raises(ConflictError, match='Uninstall'):
-            await manager.select_runtime('player', None)
-        reloaded = ExtensionManager(tmp_path / 'data', base_index=source / 'config/service-index.json')
-        assert reloaded.status('player').state == 'installed'
-        assert reloaded.status('player').runtime_environment == environment.environment_id
-        await reloaded.close()
-        await manager.close()
-    with patch.object(EnvironmentManager, '_python', return_value=Path(sys.executable)):
-        asyncio.run(exercise())
 
 
 def test_independent_runtime_migrates_matching_records_and_reconciles_changed_definition(tmp_path: Path) -> None:

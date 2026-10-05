@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from f8pysdk.service_runtime_tools.inventory import ServiceCatalog
-from f8pysdk.specs import F8OperatorSchemaVersion, F8OperatorSpec, F8ServiceSchemaVersion, F8ServiceSpec
+from f8pysdk.specs import F8OperatorSchemaVersion, F8OperatorSpec, F8ServiceSchemaVersion, F8ServiceSpec, F8ServiceDescribe
 from f8studio_core.graph import NodeCatalog, StudioDocument
 from f8studio_server.app import create_app
 from f8studio_server.application import StudioApplication
@@ -80,6 +80,25 @@ def test_catalog_refresh_api_returns_updated_snapshot(tmp_path: Path) -> None:
         assert response.status_code == 200
         assert any(item["serviceClass"] == "f8.pystudio" for item in response.json()["services"])
 
+    asyncio.run(scenario())
+
+
+def test_catalog_get_observes_external_platform_inventory_changes(tmp_path: Path) -> None:
+    descriptions: list[F8ServiceDescribe] = []
+    application = StudioApplication(data_dir=tmp_path / 'data', service_roots=())
+    application.catalog = CatalogService(platform_describes=lambda: tuple(descriptions))
+    app = create_app(application=application, web_dist=tmp_path)
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://testserver') as client:
+            assert (await client.get('/api/catalog')).json()['services'] == []
+            descriptions.append(F8ServiceDescribe(service=F8ServiceSpec(
+                schemaVersion=F8ServiceSchemaVersion.f8service_1, serviceClass='test.external', label='External',
+            )))
+            assert (await client.get('/api/catalog')).json()['services'][0]['serviceClass'] == 'test.external'
+            descriptions.clear()
+            assert (await client.get('/api/catalog')).json()['services'] == []
+        await application.close()
     asyncio.run(scenario())
 
 

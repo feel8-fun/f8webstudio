@@ -29,11 +29,13 @@ class CatalogService:
         roots: Sequence[Path] | None = None,
         builtins: Sequence[F8ServiceDescribe] = (),
         extension_indexes: Callable[[], tuple[Path, ...]] | None = None,
+        platform_describes: Callable[[], tuple[F8ServiceDescribe, ...]] | None = None,
     ) -> None:
         self._catalog = ServiceCatalog()
         self._roots = None if roots is None else tuple(roots)
         self._builtins = tuple(builtins)
         self._extension_indexes = extension_indexes
+        self._platform_describes = platform_describes
         self._lock = RLock()
         self._discovered_service_classes: tuple[str, ...] = ()
         self.refresh()
@@ -41,7 +43,13 @@ class CatalogService:
     def refresh(self, *, force_dynamic_service_classes: Sequence[str] = ()) -> CatalogSnapshot:
         updated = ServiceCatalog()
         discovered: list[str] = []
-        if self._roots is None and self._extension_indexes is not None:
+        if self._roots is None and self._platform_describes is not None:
+            for describe in self._platform_describes():
+                updated.register_service(describe.service)
+                if not isinstance(describe.operators, msgspec.UnsetType):
+                    updated.register_operators(describe.operators)
+                discovered.append(str(describe.service.serviceClass))
+        elif self._roots is None and self._extension_indexes is not None:
             for index in self._extension_indexes():
                 discovered.extend(load_index_into_catalog(
                     path=index, catalog=updated, force_dynamic_service_classes=force_dynamic_service_classes,

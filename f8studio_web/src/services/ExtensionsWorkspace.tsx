@@ -1,11 +1,22 @@
+import { setApplicationRunning } from '../api/client';
 import { ArrowLeft, ArrowRight, Download, PackagePlus, RefreshCw, Search, Trash2, X, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { cancelExtensionInstall, fetchEnvironments, fetchExtensions,
-  importExtensionPackage, installExtension, selectExtensionRuntime, setExtensionEnabled, uninstallExtension } from '../api/client';
+  importExtensionPackage, installExtension, setExtensionEnabled, uninstallExtension } from '../api/client';
 import type { EnvironmentStatus, ExtensionStatus } from '../api/contracts';
 
 import { ExtensionDetails, ExtensionLink, extensionHref, readExtensionLocation, type ExtensionLocation } from './ExtensionDetails';
+import { ExtensionOrigin } from './ExtensionOrigin';
+import { ManagementTasks, useManagementJobs } from './ManagementTasks';
+
+function installationLabel(extension: ExtensionStatus): string {
+  if (extension.sourceCheckout && !extension.releaseSha256) {
+    if (extension.state === 'installed') return 'Registered locally';
+    if (extension.state === 'disabled') return 'Disabled locally';
+  }
+  return extension.state;
+}
 
 export function ExtensionsWorkspace() {
   const [extensions, setExtensions] = useState<readonly ExtensionStatus[]>([]);
@@ -51,7 +62,7 @@ export function ExtensionsWorkspace() {
     return () => controller.abort();
   }, [load]);
 
-  const installing = extensions.some((extension) => extension.state === 'installing');
+  const installing = extensions.some((extension) => extension.state === 'installing' || extension.applicationOperation?.state === 'running');
   const preparing = environments.some((environment) => environment.state === 'preparing');
   useEffect(() => {
     if (!installing && !preparing) return;
@@ -76,36 +87,27 @@ export function ExtensionsWorkspace() {
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [installing, preparing, load]);
 
-  const act = useCallback(async (action: () => Promise<ExtensionStatus>, refresh: boolean, rollback?: ExtensionStatus) => {
-    setBusy(true);
-    setError('');
-    try {
-      const status = await action();
-      setExtensions((current) => current.map((extension) => extension.extensionId === status.extensionId ? status : extension));
-      if (refresh) await load();
-    } catch (reason: unknown) {
-      if (rollback) setExtensions((current) => current.map((extension) => extension.extensionId === rollback.extensionId ? rollback : extension));
-      setError(reason instanceof Error ? reason.message : 'Extension operation failed');
-    } finally {
-      setBusy(false);
-    }
+  const tasks = useManagementJobs(async () => { await load(); setDetailRevision((value) => value + 1); });
+  const act = useCallback(async (action: () => Promise<unknown>, _refresh: boolean) => {
+    setBusy(true); setError('');
+    try { await action(); await load(); }
+    catch (reason: unknown) { setError(reason instanceof Error ? reason.message : 'Unable to queue extension operation'); }
+    finally { setBusy(false); }
   }, [load]);
 
-  const toggle = useCallback((extension: ExtensionStatus, enabled: boolean) => {
-    const updated: ExtensionStatus = { ...extension, state: enabled ? 'installed' : 'disabled' };
-    setExtensions((current) => current.map((item) => item.extensionId === extension.extensionId ? updated : item));
-    return act(() => setExtensionEnabled(extension.extensionId, enabled), true, extension);
-  }, [act]);
+  const toggle = useCallback((extension: ExtensionStatus, enabled: boolean) =>
+    act(() => setExtensionEnabled(extension.extensionId, enabled), true), [act]);
 
   const filteredExtensions = useMemo(() => extensions.filter((extension) =>
     `${extension.name} ${extension.extensionId} ${extension.description}`.toLowerCase().includes(query.trim().toLowerCase())), [extensions, query]);
-  const locked = busy || installing || preparing;
+  const locked = busy;
 
   const importPackage = useCallback(async () => {
     setBusy(true);
     setError('');
     try {
-      setExtensions(await importExtensionPackage(packageUrl.trim(), packageHash.trim().toLowerCase()));
+      await importExtensionPackage(packageUrl.trim(), packageHash.trim().toLowerCase());
+      await load();
       setPackageUrl('');
       setPackageHash('');
     } catch (reason: unknown) {
@@ -113,19 +115,27 @@ export function ExtensionsWorkspace() {
     } finally {
       setBusy(false);
     }
-  }, [packageUrl, packageHash]);
+  }, [packageUrl, packageHash, load]);
 
   const selectedExtension = extensions.find((extension) => extension.extensionId === location?.extensionId);
   const extensionCard = (extension: ExtensionStatus, showDetailsLink: boolean) => (
     <div className="extension-row" key={extension.extensionId}>
-      <div className="extension-heading"><PackagePlus size={17} /><strong>{showDetailsLink ? <ExtensionLink location={{ extensionId: extension.extensionId }} onNavigate={navigate}>{extension.name}</ExtensionLink> : extension.name}</strong><span className={`extension-state extension-${extension.state}`}>{extension.state}</span></div>
+      <div className="extension-heading"><PackagePlus size={17} /><strong>{showDetailsLink ? <ExtensionLink location={{ extensionId: extension.extensionId }} onNavigate={navigate}>{extension.name}</ExtensionLink> : extension.name}</strong><span className={`extension-state extension-${extension.state}`}>{installationLabel(extension)}</span></div>
       <div className="extension-classes">v{extension.version} · {extension.serviceClasses.length} services · {extension.toolIds?.length ?? 0} tools · {extension.skillIds?.length ?? 0} skills</div>
       <div className="extension-detail">{extension.description}</div>
-      {extension.preinstalled && <div className="extension-detail">Included with this distribution.</div>}
+      <ExtensionOrigin extension={extension} />
+      {extension.application && <div className="extension-detail">{extension.running ? (extension.managed ? 'Running · managed by Launcher' : 'Running from source · externally managed') : 'Stopped'}</div>}
+      {extension.application && extension.managed && (extension.releaseSha256 || extension.sourceCheckout) && <button className="command-button" type="button" disabled={locked || extension.applicationOperation?.state === 'running'} aria-label={`${extension.running ? 'Stop' : 'Start'} ${extension.name}`} onClick={() => void (async () => {
+        setBusy(true); setError('');
+        try { await setApplicationRunning(extension.extensionId, !extension.running, extension.runningSource || (extension.sourceCheckout && !extension.releaseSha256)); await load(); }
+        catch (reason: unknown) { setError(reason instanceof Error ? reason.message : 'Application operation failed'); }
+        finally { setBusy(false); }
+      })()}>{extension.applicationOperation?.state === 'running' ? 'Stopping…' : extension.running ? 'Stop' : 'Start'}{extension.sourceCheckout && !extension.releaseSha256 ? ' source' : ''}</button>}
       {extension.runtimeKind === 'shared' && <div className="extension-detail">Reuses an installed official environment. No additional environment download.</div>}
       {(extension.state === 'available' || extension.state === 'failed') && extension.runtimeKind === 'pixi' && <div className="extension-detail">Runtime dependencies may need to be downloaded. Shared runtimes are reused.</div>}
+      {extension.applicationOperation?.state === 'failed' && <div className="extension-error" role="alert">{extension.applicationOperation.detail}</div>}
       {extension.detail && <div className={extension.state === 'failed' ? 'extension-error' : 'extension-detail'} role="status">{extension.state === 'failed' && <XCircle size={14} />}{extension.detail}</div>}
-      {(extension.state === 'available' || extension.state === 'failed') && <button className="command-button primary" type="button" disabled={locked} aria-label={`Install ${extension.name}`} onClick={() => void act(() => installExtension(extension.extensionId), false)}><Download size={15} />{extension.state === 'failed' ? 'Retry install' : 'Install'}</button>}
+      {(extension.state === 'available' || extension.state === 'failed') && (!extension.application || extension.releaseSha256) && <button className="command-button primary" type="button" disabled={locked} aria-label={`Install ${extension.name}`} onClick={() => void act(() => installExtension(extension.extensionId), false)}><Download size={15} />{extension.state === 'failed' ? 'Retry install' : 'Install'}</button>}
       {extension.state === 'installing' && <button className="command-button" type="button" disabled={busy} aria-label={`Cancel ${extension.name} installation`} onClick={() => void act(() => cancelExtensionInstall(extension.extensionId), true)}><X size={15} />Cancel</button>}
       {(extension.state === 'installed' || extension.state === 'disabled') && <div className="extension-actions">
         <label className="extension-toggle"><input type="checkbox" aria-label={`Enable ${extension.name}`} checked={extension.state === 'installed'} disabled={locked} onChange={(event) => void toggle(extension, event.target.checked)} />Enabled</label>
@@ -143,19 +153,11 @@ export function ExtensionsWorkspace() {
     </div>
     {error && <div className="services-error" role="alert">{error}</div>}
     <div className="services-body" ref={bodyRef}>
+      <ManagementTasks jobs={tasks.jobs} error={tasks.error} />
       {location ? <section className="services-extensions extension-detail-page" aria-label="Extension details">
         {selectedExtension ? <>
           {extensionCard(selectedExtension, false)}
           <p className="extension-lifecycle-note">Installation and enabling apply to the entire extension, including its services, tools and skills.</p>
-          {selectedExtension.runtimeSelectable && <div className="runtime-binding">
-            <label>Runtime environment<select aria-label="Extension runtime environment" value={environments.some((environment) => environment.environmentId === selectedExtension.runtimeEnvironment) ? selectedExtension.runtimeEnvironment ?? '' : ''}
-              disabled={locked || selectedExtension.state === 'installed' || selectedExtension.state === 'disabled'}
-              onChange={(event) => void act(() => selectExtensionRuntime(selectedExtension.extensionId, event.target.value || null), true)}>
-              <option value="">Publisher default</option>
-              {environments.map((environment) => <option key={environment.environmentId} value={environment.environmentId} disabled={!environment.ready || environment.state === 'changed' || environment.state === 'preparing' || environment.state === 'failed'}>{environment.name || environment.environmentId} · {environment.source} · {environment.revision} · {environment.state}</option>)}
-            </select></label>
-            <p>Shared Python extensions can reuse an explicitly selected environment. Dependencies are checked during installation. Uninstall before changing the runtime.</p>
-          </div>}
           <ExtensionDetails key={`${selectedExtension.extensionId}/${selectedExtension.version}`} location={location} onNavigate={navigate} refreshRevision={detailRevision} />
         </> : <div className="services-empty">{loaded ? 'Extension not found.' : 'Loading extension…'}</div>}
       </section> : <section className="services-extensions" aria-label="Extensions">

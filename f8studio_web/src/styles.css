@@ -451,6 +451,9 @@ button:disabled { cursor: default; }
 .extension-metadata { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 24px; margin: 24px 0; }
 .extension-metadata dt { color: #929eaa; }
 .extension-metadata dd { margin: 0; }
+.extension-origin { display: grid; gap: 4px; margin: 8px 0; }
+.extension-origin code { overflow-wrap: anywhere; }
+.extension-origin .extension-metadata { margin: 8px 0; }
 .extension-spec-section { margin-top: 24px; }
 .extension-spec-section h3 { display: flex; gap: 10px; margin: 0 0 10px; font-size: 13px; }
 .extension-spec-item { padding: 12px 0; border-top: 1px solid #2c3239; }
@@ -474,8 +477,9 @@ button:disabled { cursor: default; }
 .runtime-changed, .runtime-preparing { border-color: #8a6c3b; color: #e6bd75; }
 .runtime-inspector { margin-top: 18px; }
 .runtime-inspector > .extension-heading { justify-content: space-between; }
-.runtime-create, .runtime-storage { margin-top: 18px; padding: 18px; border: 1px solid #303b45; border-radius: 6px; font-size: 12px; }
-.runtime-create > summary, .runtime-storage > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; color: #cbd4dc; }
+.runtime-storage { margin-bottom: 18px; padding: 18px; border: 1px solid #303b45; border-radius: 6px; font-size: 12px; }
+.runtime-packages { width: 100%; border-collapse: collapse; font-size: 12px; }
+.runtime-packages th, .runtime-packages td { padding: 8px; text-align: left; border-bottom: 1px solid #303b45; }
 .runtime-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; margin-top: 18px; }
 .runtime-form label, .runtime-binding label { display: grid; min-width: 0; gap: 8px; color: #cbd4dc; font-size: 12px; }
 .runtime-form input, .runtime-form select, .runtime-form textarea, .runtime-binding select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid #303b45; border-radius: 4px; background: #151c22; color: #dce5ec; }

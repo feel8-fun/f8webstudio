@@ -13,7 +13,6 @@ from f8platform.environment_definitions import (
 )
 from f8platform.environments import EnvironmentManager
 from f8studio_server.errors import InvalidRequestError
-from f8platform.extension_models import EnvironmentCreateRequest
 from f8platform.runtime_registry import RuntimeRegistry
 from f8platform.runtime_sources import equivalent_environment, read_runtime_sources
 
@@ -102,18 +101,6 @@ def test_matching_development_prefix_is_reused_and_legacy_selection_resolves(tmp
     assert not owner.workspace_python_exists('base')
 
 
-def test_derived_environment_snapshots_repo_dependencies_outside_runtime_directory(tmp_path: Path) -> None:
-    root = split_workspace(tmp_path / 'repo')
-    manager = EnvironmentManager(tmp_path / 'data', root)
-    registry = RuntimeRegistry(tmp_path / 'data', manager)
-    registry.add_preset('base')
-    item = registry.create(EnvironmentCreateRequest(name='derived', base_environment_id=next(iter(registry.sources))))
-    definition = read_manifest(registry.definitions / item.environment_id)
-    dependency = definition['feature']['base']['pypi-dependencies']['local-package']
-    path = registry.definitions / item.environment_id / dependency['path']
-    assert path.is_relative_to(registry.definitions / item.environment_id)
-    assert (path / 'module.py').read_text() == 'VALUE = 42'
-    assert dependency['editable'] is False
 
 
 def test_managed_materialization_retargets_manifest_and_lock_local_inputs(tmp_path: Path) -> None:

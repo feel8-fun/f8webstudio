@@ -1,13 +1,13 @@
 """Explicit HTTP wire contracts. msgspec models also drive generated TS types."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 import msgspec
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from f8pysdk.specs import F8MonitorSnapshot
+from f8pysdk.platform_contracts import MANAGEMENT_ROUTES, RouteContract
 from f8pysdk.decision import DecisionResult
 from f8studio_core import HealthStatus, ServerCapabilities
 from f8studio_core.graph import GraphNode, PatchResult
@@ -18,18 +18,12 @@ from .agents import models as agents, provider_settings as settings
 from .agents.provider_probe import ProviderProbeResult
 from .catalog import CatalogSnapshot
 from .events import EventEnvelope
-from f8platform.extension_models import (
-    EnvironmentCreateRequest, EnvironmentDetail, EnvironmentRetentionRequest, RuntimeStorageRequest,
-    RuntimeStorageStatus, ExtensionRuntimeRequest, ExtensionDetail, EnvironmentStatus, ExtensionImportRequest, ExtensionInstallPlan, ExtensionStatus, ExtensionToggleRequest,
-    PresetEnvironmentStatus,
-)
 from .processes import ManagedProcessResult
 from .schema_generation import model_schemas
 from .assets import AssetExport
 from f8media_protocol.models import AudioSessionOffer
 from .agents import CreateAgentSessionRequest
 from .assets import CreateAssetRequest
-from .extension_tools import ToolView, ToolRunRequest, ToolJob, CapabilityResource, ResourceContent
 from .models import CreateCatalogNodeRequest
 from .editor import CreateEditorSessionRequest
 from .models import CreateProjectRequest
@@ -75,50 +69,13 @@ class ValidationResponse(msgspec.Struct, frozen=True, rename="camel"):
     layout_revision: int
 
 
-@dataclass(frozen=True)
-class RouteContract:
-    method: str
-    path: str
-    request: Any
-    response: Any
-    status: int = 200
-    response_media_type: str = "application/json"
-
-
-ROUTES = (
-    RouteContract('get', '/api/extension-tools', None, tuple[ToolView, ...]),
-    RouteContract('post', '/api/extension-tools/{extension_id}/{tool_id}/run', ToolRunRequest, ToolJob, 202),
-    RouteContract('get', '/api/tool-jobs', None, tuple[ToolJob, ...]),
-    RouteContract('get', '/api/tool-jobs/{job_id}', None, ToolJob),
-    RouteContract('post', '/api/tool-jobs/{job_id}/cancel', None, ToolJob),
-    RouteContract('get', '/api/extension-resources/{extension_id}/{resource_id}/file', None, None, 200, 'application/octet-stream'),
-    RouteContract('get', '/api/extension-resources', None, tuple[CapabilityResource, ...]),
-    RouteContract('get', '/api/extension-resources/{extension_id}/{resource_id}', None, ResourceContent),
+ROUTES = MANAGEMENT_ROUTES + (
     RouteContract("get", "/api/health", None, HealthStatus, 200),
     RouteContract("get", "/api/logs", None, tuple[EventEnvelope, ...], 200),
     RouteContract("get", "/api/capabilities", None, CapabilitiesResponse, 200),
     RouteContract("get", "/api/media/rtc-configuration", None, models.BrowserRtcConfiguration, 200),
     RouteContract("get", "/api/catalog", None, CatalogSnapshot, 200),
     RouteContract("post", "/api/catalog/refresh", None, CatalogSnapshot, 200),
-    RouteContract("get", "/api/extensions", None, tuple[ExtensionStatus, ...], 200),
-    RouteContract("post", "/api/extensions/import", ExtensionImportRequest, tuple[ExtensionStatus, ...], 200),
-    RouteContract("get", "/api/extensions/{extension_id}/detail", None, ExtensionDetail, 200),
-    RouteContract("get", "/api/extensions/{extension_id}/plan", None, ExtensionInstallPlan, 200),
-    RouteContract("get", "/api/environments", None, tuple[EnvironmentStatus, ...], 200),
-    RouteContract("get", "/api/environments/presets", None, tuple[PresetEnvironmentStatus, ...], 200),
-    RouteContract("get", "/api/environments/storage", None, RuntimeStorageStatus, 200),
-    RouteContract("put", "/api/environments/storage", RuntimeStorageRequest, RuntimeStorageStatus, 200),
-    RouteContract("post", "/api/environments", EnvironmentCreateRequest, EnvironmentStatus, 201),
-    RouteContract("get", "/api/environments/{environment_id}/detail", None, EnvironmentDetail, 200),
-    RouteContract("post", "/api/environments/{environment_id}/prepare", None, EnvironmentStatus, 200),
-    RouteContract("post", "/api/environments/{environment_id}/cancel", None, EnvironmentStatus, 200),
-    RouteContract("put", "/api/environments/{environment_id}/retention", EnvironmentRetentionRequest, EnvironmentStatus, 200),
-    RouteContract("delete", "/api/environments/{environment_id}", None, None, 204),
-    RouteContract("put", "/api/extensions/{extension_id}/runtime", ExtensionRuntimeRequest, ExtensionStatus, 200),
-    RouteContract("post", "/api/extensions/{extension_id}/install", None, ExtensionStatus, 200),
-    RouteContract("post", "/api/extensions/{extension_id}/cancel", None, ExtensionStatus, 200),
-    RouteContract("put", "/api/extensions/{extension_id}/enabled", ExtensionToggleRequest, ExtensionStatus, 200),
-    RouteContract("delete", "/api/extensions/{extension_id}", None, ExtensionStatus, 200),
     RouteContract("post", "/api/catalog/nodes", CreateCatalogNodeRequest, GraphNode, 200),
     RouteContract("get", "/api/assets", None, tuple[assets.AssetSummary, ...], 200),
     RouteContract("post", "/api/assets", CreateAssetRequest, assets.AssetRecord, 201),

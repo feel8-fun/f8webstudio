@@ -10,7 +10,8 @@ import pytest
 from f8studio_server.agents.skills import AgentSkillLibrary
 from f8platform.environments import EnvironmentManager
 from f8studio_server.errors import ConflictError, InvalidRequestError
-from f8studio_server.extension_tools import ExtensionTools, ToolRunRequest
+from f8platform.tools import ExtensionTools
+from f8pysdk.tool_spec import ToolRunRequest
 from f8platform.extensions import ExtensionManager
 
 

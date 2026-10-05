@@ -52,13 +52,14 @@ from .models import (
 )
 from .sessions import AgentSessions
 from .skills import AgentSkillLibrary
-from ..extension_tools import ExtensionTools, ToolRunRequest, ToolJob
+from f8pysdk.platform_client import PlatformTools
+from f8pysdk.tool_spec import ToolRunRequest, ToolJob
 
 
 class AgentModelTools:
     """Bind model tools with preview and proposal state isolated to one run."""
 
-    def __init__(self, *, tools: StudioAutomationTools, execution: AgentToolExecution, sessions: AgentSessions, editor: EditorSessionService, local: LocalIntegrationService, skills: AgentSkillLibrary, events: EventJournal, extension_tools: ExtensionTools | None = None) -> None:
+    def __init__(self, *, tools: StudioAutomationTools, execution: AgentToolExecution, sessions: AgentSessions, editor: EditorSessionService, local: LocalIntegrationService, skills: AgentSkillLibrary, events: EventJournal, extension_tools: PlatformTools | None = None) -> None:
         self._extension_tools = extension_tools
         self._tools = tools
         self._execution = execution

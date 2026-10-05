@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from .extension_tools import ToolRunRequest
 from .websocket_lifecycle import send_until_disconnect
 
 from f8studio_server.errors import InvalidRequestError, NotFoundError
@@ -24,6 +23,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.types import ASGIApp
 
 from f8pysdk.specs import F8JsonValue
+from f8pysdk.platform_client import PlatformClient
 from f8pysdk.decision import DecisionRequest, validate_questions
 from f8media_protocol.client import MediaGatewayRequestError, MediaGatewayUnavailable
 from f8media_protocol.contracts import MediaGateway
@@ -41,7 +41,7 @@ from f8studio_core.graph import (
 )
 
 from .application import StudioApplication
-from .api_contracts import install_openapi
+from .api_contracts import install_openapi, ROUTES
 from .presentation_models import StreamHello, LiveSnapshot
 from .agents import (
     CreateAgentSessionRequest,
@@ -62,10 +62,6 @@ from .assets import (
 )
 from .editor import CreateEditorSessionRequest, EditorPositionRequest, UpdateEditorDocumentRequest
 from .editor_context import editor_support_files
-from f8platform.extension_models import (
-    EnvironmentCreateRequest, EnvironmentRetentionRequest, ExtensionImportRequest,
-    ExtensionRuntimeRequest, ExtensionToggleRequest, RuntimeStorageRequest,
-)
 from .local_integration import (
     RegisterHotkeyRequest,
 )
@@ -177,6 +173,7 @@ def create_app(
     allowed_hosts: tuple[str, ...] | None = None,
     access: StudioAccess | None = None,
     rtc_configuration: BrowserRtcConfiguration | None = None,
+    platform: PlatformClient | None = None,
 ) -> FastAPI:
     resolved_web_dist = (web_dist or default_web_dist()).resolve()
     index_path = resolved_web_dist / "index.html"
@@ -184,6 +181,7 @@ def create_app(
     studio = application or StudioApplication(
         data_dir=data_dir or default_data_dir(), runtime=runtime,
         runtime_config=runtime_config, service_roots=service_roots, media_gateway=media_gateway,
+        platform=platform,
     )
 
     @asynccontextmanager
@@ -331,134 +329,29 @@ def create_app(
 
     @app.get("/api/catalog")
     async def catalog() -> F8JsonValue:
-        return _json_value(studio.catalog.snapshot())
+        return _json_value(await asyncio.to_thread(studio.catalog.refresh))
 
     @app.post("/api/catalog/refresh")
     async def refresh_catalog() -> F8JsonValue:
         return _json_value(await asyncio.to_thread(studio.catalog.refresh))
 
-    @app.get('/api/extension-tools')
-    async def extension_tools() -> F8JsonValue:
-        return _json_value(studio.extension_tools.list())
+    # Browser and Agent requests use the same platform authority as the launcher CLI.
+    async def platform_management(request: Request) -> Response:
+        response = await asyncio.to_thread(studio.platform.request, request.method,
+            request.url.path, content=await request.body(), params=str(request.url.query))
+        if request.method != 'GET' and response.is_success and response.status_code != 202:
+            await asyncio.to_thread(studio.catalog.refresh)
+        headers = {name: value for name, value in response.headers.items()
+                   if name in {'content-type', 'content-disposition'}}
+        return Response(response.content, status_code=response.status_code, headers=headers)
 
-    @app.post('/api/extension-tools/{extension_id}/{tool_id}/run', status_code=202)
-    async def run_extension_tool(extension_id: str, tool_id: str, request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, ToolRunRequest)
-        return _json_value(studio.extension_tools.submit(extension_id, tool_id, payload))
-
-    @app.get('/api/tool-jobs')
-    async def tool_jobs() -> F8JsonValue:
-        return _json_value(studio.extension_tools.jobs())
-
-    @app.get('/api/tool-jobs/{job_id}')
-    async def tool_job(job_id: str) -> F8JsonValue:
-        return _json_value(studio.extension_tools.get(job_id))
-
-    @app.post('/api/tool-jobs/{job_id}/cancel')
-    async def cancel_tool_job(job_id: str) -> F8JsonValue:
-        return _json_value(await studio.extension_tools.cancel(job_id))
-
-    @app.get('/api/extension-resources')
-    async def extension_resources() -> F8JsonValue:
-        return _json_value(studio.extension_tools.resources())
-
-    @app.get('/api/extension-resources/{extension_id}/{resource_id}/file')
-    async def download_extension_resource(extension_id: str, resource_id: str) -> FileResponse:
-        path = studio.extension_tools.resource_path(extension_id, resource_id)
-        return FileResponse(path, filename=path.name)
-
-    @app.get('/api/extension-resources/{extension_id}/{resource_id}')
-    async def read_extension_resource(extension_id: str, resource_id: str) -> F8JsonValue:
-        return _json_value(await asyncio.to_thread(studio.extension_tools.read_resource, extension_id, resource_id))
-
-    @app.get('/api/extensions')
-    async def extensions() -> F8JsonValue:
-        return _json_value(studio.extensions.statuses())
-
-    @app.post('/api/extensions/import')
-    async def import_extension_package(request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, ExtensionImportRequest)
-        return _json_value(await studio.extensions.import_package(payload))
-
-    @app.get('/api/extensions/{extension_id}/detail')
-    async def extension_detail(extension_id: str) -> F8JsonValue:
-        return _json_value(await asyncio.to_thread(studio.extensions.detail, extension_id))
-
-    @app.get('/api/extensions/{extension_id}/plan')
-    async def extension_install_plan(extension_id: str) -> F8JsonValue:
-        return _json_value(await asyncio.to_thread(studio.extensions.install_plan, extension_id))
-
-    @app.get('/api/environments')
-    async def extension_environments() -> F8JsonValue:
-        return _json_value(studio.extensions.environment_statuses())
-
-    @app.get('/api/environments/presets')
-    async def preset_environments() -> F8JsonValue:
-        return _json_value(await asyncio.to_thread(studio.extensions.preset_environments))
-
-    @app.get('/api/environments/storage')
-    async def runtime_storage() -> F8JsonValue:
-        return _json_value(await asyncio.to_thread(studio.extensions.runtime_registry.storage_status))
-
-    @app.put('/api/environments/storage')
-    async def set_runtime_storage(request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, RuntimeStorageRequest)
-        return _json_value(await asyncio.to_thread(studio.extensions.set_runtime_storage, payload.path))
-
-    @app.post('/api/environments', status_code=201)
-    async def create_environment(request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, EnvironmentCreateRequest)
-        return _json_value(await asyncio.to_thread(studio.extensions.runtime_registry.create, payload))
-
-    @app.get('/api/environments/{environment_id}/detail')
-    async def environment_detail(environment_id: str) -> F8JsonValue:
-        return _json_value(await asyncio.to_thread(studio.extensions.runtime_registry.detail, environment_id))
-
-    @app.post('/api/environments/{environment_id}/prepare')
-    async def prepare_environment(environment_id: str) -> F8JsonValue:
-        return _json_value(await studio.extensions.prepare_environment(
-            environment_id, studio.catalog.refresh, studio.processes.is_class_running,
-        ))
-
-    @app.post('/api/environments/{environment_id}/cancel')
-    async def cancel_environment_preparation(environment_id: str) -> F8JsonValue:
-        return _json_value(await studio.extensions.runtime_registry.cancel(environment_id))
-
-    @app.put('/api/environments/{environment_id}/retention')
-    async def retain_environment(environment_id: str, request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, EnvironmentRetentionRequest)
-        return _json_value(await asyncio.to_thread(studio.extensions.runtime_registry.retain, environment_id, payload.pinned))
-
-    @app.delete('/api/environments/{environment_id}', status_code=204)
-    async def remove_environment(environment_id: str) -> Response:
-        await asyncio.to_thread(studio.extensions.remove_environment, environment_id)
-        return Response(status_code=204)
-
-    @app.put('/api/extensions/{extension_id}/runtime')
-    async def select_extension_runtime(extension_id: str, request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, ExtensionRuntimeRequest)
-        return _json_value(await studio.extensions.select_runtime(extension_id, payload.environment_id))
-
-    @app.post('/api/extensions/{extension_id}/install')
-    async def install_extension(extension_id: str) -> F8JsonValue:
-        return _json_value(await studio.extensions.install(extension_id, studio.catalog.refresh))
-
-    @app.post('/api/extensions/{extension_id}/cancel')
-    async def cancel_extension_install(extension_id: str) -> F8JsonValue:
-        return _json_value(await studio.extensions.cancel(extension_id))
-
-    @app.put('/api/extensions/{extension_id}/enabled')
-    async def set_extension_enabled(extension_id: str, request: Request) -> F8JsonValue:
-        payload = await _decode_body(request, ExtensionToggleRequest)
-        return _json_value(await studio.extensions.set_enabled(
-            extension_id, payload.enabled, studio.catalog.refresh, studio.processes.is_class_running,
-        ))
-
-    @app.delete('/api/extensions/{extension_id}')
-    async def uninstall_extension(extension_id: str) -> F8JsonValue:
-        return _json_value(await studio.extensions.uninstall(
-            extension_id, studio.catalog.refresh, studio.processes.is_class_running,
-        ))
+    management_prefixes = ('/api/extensions', '/api/environments', '/api/extension-tools',
+                           '/api/tool-jobs', '/api/extension-resources', '/api/applications', '/api/source-applications',
+                           '/api/management-jobs')
+    for contract in ROUTES:
+        if contract.path.startswith(management_prefixes):
+            app.add_api_route(contract.path, platform_management, methods=[contract.method.upper()],
+                              status_code=contract.status)
 
     @app.post("/api/catalog/nodes")
     async def create_catalog_node(request: Request) -> F8JsonValue:

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ExtensionsWorkspace } from './ExtensionsWorkspace';
 
 const api = vi.hoisted(() => ({
-  fetchExtensionDetail: vi.fn(), cancelExtensionInstall: vi.fn(), fetchExtensions: vi.fn(), fetchEnvironments: vi.fn(),
+  fetchExtensionDetail: vi.fn(), cancelExtensionInstall: vi.fn(), fetchExtensions: vi.fn(), fetchManagementJobs: vi.fn(), fetchEnvironments: vi.fn(),
   installExtension: vi.fn(), setExtensionEnabled: vi.fn(), uninstallExtension: vi.fn(),
   importExtensionPackage: vi.fn(),
 }));
@@ -18,14 +18,47 @@ const pose = { extensionId: 'mediapipe', name: 'MediaPipe Pose', version: '1.0.0
   environmentId: null, preinstalled: false };
 
 beforeEach(() => {
+  api.fetchManagementJobs.mockResolvedValue([]);
   window.history.replaceState(null, "", "/?view=extensions");
   api.fetchEnvironments.mockResolvedValue([]);
   api.fetchExtensions.mockResolvedValue([vision, pose]);
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
+test.each(['native', 'workspace'])('labels a registered %s source extension without implying a release', async (runtimeKind) => {
+  api.fetchExtensions.mockResolvedValue([{ ...vision, runtimeKind, sourceCheckout: true, sourcePath: '/workspace/extensions/cvkit' }]);
+  render(<ExtensionsWorkspace />);
+  expect(await screen.findByText('Development source checkout')).toBeInTheDocument();
+  expect(screen.getByText('Registered locally')).toBeInTheDocument();
+  expect(screen.getByText('Uses local source and build outputs; no release package imported.')).toBeInTheDocument();
+  expect(screen.getByText('Included in the development workspace preset.')).toBeInTheDocument();
+  expect(screen.queryByText('Included with this distribution.')).not.toBeInTheDocument();
+  expect(screen.getByText('/workspace/extensions/cvkit')).toBeInTheDocument();
+  expect(screen.getByRole('checkbox', { name: 'Enable Computer Vision' })).toBeChecked();
+});
+
+test('shows verified release origin separately from installation state', async () => {
+  api.fetchExtensions.mockResolvedValue([{ ...pose, releaseSha256: 'a'.repeat(64), sourceCheckout: false }]);
+  render(<ExtensionsWorkspace />);
+  expect(await screen.findByText('Release package · v1.0.0')).toBeInTheDocument();
+  expect(screen.getByText('available')).toBeInTheDocument();
+  expect(screen.getByText('a'.repeat(64))).toBeInTheDocument();
+  expect(screen.queryByText('Development source checkout')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Install MediaPipe Pose' })).toBeInTheDocument();
+});
+
+test('shows both a checkout and a release when both are available', async () => {
+  api.fetchExtensions.mockResolvedValue([{ ...vision, sourceCheckout: true, releaseSha256: 'b'.repeat(64) }]);
+  render(<ExtensionsWorkspace />);
+  expect(await screen.findByText('Development source checkout')).toBeInTheDocument();
+  expect(screen.getByText('Release package · v1.0.0')).toBeInTheDocument();
+  expect(screen.queryByText('Uses local source and build outputs; no release package imported.')).not.toBeInTheDocument();
+  expect(screen.getByText('installed')).toBeInTheDocument();
+});
+
 test('installs a generic extension without dropping the other cards', async () => {
-  api.installExtension.mockResolvedValue({ ...pose, state: 'installing', detail: 'Preparing pose runtime' });
+  api.fetchExtensions.mockResolvedValueOnce([vision, pose]).mockResolvedValue([vision, { ...pose, state: 'installing', detail: 'Preparing pose runtime' }]);
+  api.installExtension.mockResolvedValue({ jobId: 'install', state: 'queued' });
   render(<ExtensionsWorkspace />);
   expect(await screen.findByText('MediaPipe Pose')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Install MediaPipe Pose' }));
@@ -67,7 +100,8 @@ test('keeps the extension installed and reports a rejected uninstall', async () 
 });
 
 test('imports a package from a publisher and adds its extension card', async () => {
-  api.importExtensionPackage.mockResolvedValue([vision, pose, { ...vision, extensionId: 'player', name: 'Player' }]);
+  api.fetchExtensions.mockResolvedValueOnce([vision, pose]).mockResolvedValue([vision, pose, { ...vision, extensionId: 'player', name: 'Player' }]);
+  api.importExtensionPackage.mockResolvedValue({ jobId: 'import', state: 'queued' });
   render(<ExtensionsWorkspace />);
   await screen.findByText('Computer Vision');
   fireEvent.change(screen.getByLabelText('Extension package URL'), { target: { value: 'https://publisher.example/player.zip' } });
@@ -82,14 +116,15 @@ test('restores the toggle if a running service prevents disabling', async () => 
   render(<ExtensionsWorkspace />);
   const toggle = await screen.findByRole('checkbox', { name: 'Enable Computer Vision' });
   fireEvent.click(toggle);
-  expect(toggle).not.toBeChecked();
+  expect(toggle).toBeChecked();
   expect(await screen.findByRole('alert')).toHaveTextContent('Stop running services');
   expect(toggle).toBeChecked();
 });
 
 test('explains shared-runtime installation without an environment download', async () => {
   api.fetchExtensions.mockResolvedValue([{ ...pose, runtimeKind: 'shared' }]);
-  api.installExtension.mockResolvedValue({ ...pose, runtimeKind: 'shared', state: 'installing' });
+  api.fetchExtensions.mockResolvedValueOnce([{ ...pose, runtimeKind: 'shared' }]).mockResolvedValue([{ ...pose, runtimeKind: 'shared', state: 'installing' }]);
+  api.installExtension.mockResolvedValue({ jobId: 'install', state: 'queued' });
   render(<ExtensionsWorkspace />);
   expect(await screen.findByText('Reuses an installed official environment. No additional environment download.')).toBeInTheDocument();
   expect(screen.queryByText('Runtime dependencies may need to be downloaded. Shared runtimes are reused.')).not.toBeInTheDocument();
@@ -180,7 +215,8 @@ test('supports direct detail URLs and enabling a disabled extension from skill d
 
 test('previews an available extension and installs it from its detail page', async () => {
   api.fetchExtensionDetail.mockResolvedValue({ extensionId: 'mediapipe', services: [], tools: [], skills: [] });
-  api.installExtension.mockResolvedValue({ ...pose, state: 'installing' });
+  api.fetchExtensions.mockResolvedValueOnce([vision, pose]).mockResolvedValue([vision, { ...pose, state: 'installing' }]);
+  api.installExtension.mockResolvedValue({ jobId: 'install', state: 'queued' });
   render(<ExtensionsWorkspace />);
   fireEvent.click(await screen.findByRole('link', { name: 'MediaPipe Pose' }));
   expect(await screen.findByText('No tools declared.')).toBeInTheDocument();
@@ -200,7 +236,7 @@ test('reports detail errors and retries without losing extension actions', async
 });
 
 
-test('tracks environment preparation in extension details and restores controls after it finishes', async () => {
+test('allows queueing extension changes while environment preparation is running', async () => {
   vi.useFakeTimers();
   try {
     window.history.replaceState(null, '', '/?view=extensions&extension=cvkit');
@@ -209,7 +245,7 @@ test('tracks environment preparation in extension details and restores controls 
       .mockResolvedValue([{ environmentId: 'base', runtimeKind: 'workspace', ready: true, extensionIds: ['cvkit'], state: 'ready' }]);
     render(<ExtensionsWorkspace />);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    expect(screen.getByRole('checkbox', { name: 'Enable Computer Vision' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Enable Computer Vision' })).toBeEnabled();
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(screen.getByRole('checkbox', { name: 'Enable Computer Vision' })).toBeEnabled();
     expect(api.fetchEnvironments).toHaveBeenCalledTimes(2);

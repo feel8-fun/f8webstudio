@@ -1,0 +1,1 @@
+["-m", "f8studio_server", "--host", "127.0.0.1", "--port", "${F8_PORT:webstudio.http}", "--web-dist", "${F8_PACKAGE_ROOT}/build/web-studio", "--external-media-gateway", "--media-gateway-url", "${F8_ENDPOINT:media-gateway.http}", "--exit-on-stdin-close"]

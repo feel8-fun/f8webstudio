@@ -191,6 +191,140 @@ export type AgentToolCallInput = {
   readonly "tracebackId"?: string;
 };
 
+export type ApplicationDependency = {
+  readonly "extensionId": string;
+  readonly "protocolId": string;
+  readonly "versions": string;
+};
+
+export type ApplicationDependencyInput = {
+  readonly "extensionId": string;
+  readonly "protocolId": string;
+  readonly "versions": string;
+};
+
+export type ApplicationEndpoint = {
+  readonly "name": string;
+  readonly "url": string;
+};
+
+export type ApplicationEndpointInput = {
+  readonly "name": string;
+  readonly "url": string;
+};
+
+export type ApplicationHealth = {
+  readonly "endpoint": string;
+  readonly "path": string;
+  readonly "service": string;
+  readonly "protocolVersion": string;
+  readonly "timeoutSeconds": number;
+  readonly "bootstrapPath": string | null;
+};
+
+export type ApplicationHealthInput = {
+  readonly "endpoint": string;
+  readonly "path": string;
+  readonly "service": string;
+  readonly "protocolVersion": string;
+  readonly "timeoutSeconds"?: number;
+  readonly "bootstrapPath"?: string | null;
+};
+
+export type ApplicationLaunch = {
+  readonly "environment": string;
+  readonly "module": string;
+  readonly "distribution": string;
+  readonly "args": ReadonlyArray<string>;
+  readonly "env": Readonly<Record<string, string>>;
+};
+
+export type ApplicationLaunchInput = {
+  readonly "environment": string;
+  readonly "module": string;
+  readonly "distribution": string;
+  readonly "args"?: ReadonlyArray<string>;
+  readonly "env"?: Readonly<Record<string, string>>;
+};
+
+export type ApplicationManifest = {
+  readonly "extensionId": string;
+  readonly "version": string;
+  readonly "title": string;
+  readonly "launch": ApplicationLaunch;
+  readonly "provides": ReadonlyArray<ApplicationProtocol>;
+  readonly "endpoints": ReadonlyArray<ApplicationEndpoint>;
+  readonly "health": ApplicationHealth;
+  readonly "requires": ReadonlyArray<ApplicationDependency>;
+  readonly "webAssets": string | null;
+  readonly "releaseRole": "application" | "webstudio";
+};
+
+export type ApplicationManifestInput = {
+  readonly "extensionId": string;
+  readonly "version": string;
+  readonly "title": string;
+  readonly "launch": ApplicationLaunchInput;
+  readonly "provides": ReadonlyArray<ApplicationProtocolInput>;
+  readonly "endpoints": ReadonlyArray<ApplicationEndpointInput>;
+  readonly "health": ApplicationHealthInput;
+  readonly "requires"?: ReadonlyArray<ApplicationDependencyInput>;
+  readonly "webAssets"?: string | null;
+  readonly "releaseRole"?: "application" | "webstudio";
+};
+
+export type ApplicationOperation = {
+  readonly "extensionId": string;
+  readonly "action": "stop";
+  readonly "state": "failed" | "running" | "succeeded";
+  readonly "detail": string;
+};
+
+export type ApplicationOperationInput = {
+  readonly "extensionId": string;
+  readonly "action": "stop";
+  readonly "state": "failed" | "running" | "succeeded";
+  readonly "detail"?: string;
+};
+
+export type ApplicationProtocol = {
+  readonly "protocolId": string;
+  readonly "version": string;
+};
+
+export type ApplicationProtocolInput = {
+  readonly "protocolId": string;
+  readonly "version": string;
+};
+
+export type ApplicationStatus = {
+  readonly "manifest": ApplicationManifest;
+  readonly "sha256": string;
+  readonly "selected": boolean;
+  readonly "prepared": boolean;
+  readonly "state": "failed" | "running" | "stopped";
+  readonly "logPath": string;
+  readonly "endpoints": ReadonlyArray<ApplicationEndpoint>;
+};
+
+export type ApplicationStatusInput = {
+  readonly "manifest": ApplicationManifestInput;
+  readonly "sha256": string;
+  readonly "selected": boolean;
+  readonly "prepared": boolean;
+  readonly "state": "failed" | "running" | "stopped";
+  readonly "logPath": string;
+  readonly "endpoints": ReadonlyArray<ApplicationEndpointInput>;
+};
+
+export type ApplicationVersion = {
+  readonly "sha256": string;
+};
+
+export type ApplicationVersionInput = {
+  readonly "sha256": string;
+};
+
 export type ApprovalStatus = "approved" | "cancelled" | "denied" | "expired" | "invalidated" | "pending";
 
 export type ApprovalStatusInput = "approved" | "cancelled" | "denied" | "expired" | "invalidated" | "pending";
@@ -781,38 +915,16 @@ export type EntryInput = {
   readonly "syncBaseLocalVersionNumber"?: number;
 };
 
-export type EnvironmentCreateRequest = {
-  readonly "name": string;
-  readonly "baseEnvironmentId": string | null;
-  readonly "policy": "adjust" | "preserve";
-  readonly "python": string;
-  readonly "condaDependencies": ReadonlyArray<string>;
-  readonly "pypiDependencies": ReadonlyArray<string>;
-};
-
-export type EnvironmentCreateRequestInput = {
-  readonly "name": string;
-  readonly "baseEnvironmentId"?: string | null;
-  readonly "policy"?: "adjust" | "preserve";
-  readonly "python"?: string;
-  readonly "condaDependencies"?: ReadonlyArray<string>;
-  readonly "pypiDependencies"?: ReadonlyArray<string>;
-};
-
 export type EnvironmentDetail = {
   readonly "environmentId": string;
   readonly "name": string;
   readonly "revision": string;
   readonly "manifest": string;
-  readonly "baseEnvironmentId": string | null;
-  readonly "policy": "adjust" | "preserve" | null;
-  readonly "condaDependencies": ReadonlyArray<string>;
-  readonly "pypiDependencies": ReadonlyArray<string>;
   readonly "storagePath": string;
   readonly "cachePath": string;
   readonly "usage": EnvironmentUsage;
-  readonly "pinned": boolean;
-  readonly "changedPackages": ReadonlyArray<string>;
+  readonly "packages": ReadonlyArray<EnvironmentPackage>;
+  readonly "packageInventory": "installed" | "locked";
   readonly "definitionPath": string;
   readonly "sourceEnvironment": string;
   readonly "providerId": string | null;
@@ -825,15 +937,11 @@ export type EnvironmentDetailInput = {
   readonly "name": string;
   readonly "revision": string;
   readonly "manifest": string;
-  readonly "baseEnvironmentId": string | null;
-  readonly "policy": "adjust" | "preserve" | null;
-  readonly "condaDependencies": ReadonlyArray<string>;
-  readonly "pypiDependencies": ReadonlyArray<string>;
   readonly "storagePath": string;
   readonly "cachePath": string;
   readonly "usage": EnvironmentUsageInput;
-  readonly "pinned"?: boolean;
-  readonly "changedPackages"?: ReadonlyArray<string>;
+  readonly "packages"?: ReadonlyArray<EnvironmentPackageInput>;
+  readonly "packageInventory"?: "installed" | "locked";
   readonly "definitionPath"?: string;
   readonly "sourceEnvironment"?: string;
   readonly "providerId"?: string | null;
@@ -841,12 +949,20 @@ export type EnvironmentDetailInput = {
   readonly "abi"?: string | null;
 };
 
-export type EnvironmentRetentionRequest = {
-  readonly "pinned": boolean;
+export type EnvironmentPackage = {
+  readonly "name": string;
+  readonly "version": string;
+  readonly "manager": "conda" | "pypi";
+  readonly "build": string;
+  readonly "platform": string;
 };
 
-export type EnvironmentRetentionRequestInput = {
-  readonly "pinned": boolean;
+export type EnvironmentPackageInput = {
+  readonly "name": string;
+  readonly "version": string;
+  readonly "manager": "conda" | "pypi";
+  readonly "build"?: string;
+  readonly "platform"?: string;
 };
 
 export type EnvironmentStatus = {
@@ -855,14 +971,13 @@ export type EnvironmentStatus = {
   readonly "extensionIds": ReadonlyArray<string>;
   readonly "ready": boolean;
   readonly "name": string;
-  readonly "source": "developer" | "official" | "package";
+  readonly "source": "official" | "package";
   readonly "revision": string;
   readonly "state": "changed" | "declared" | "failed" | "missing" | "preparing" | "ready";
   readonly "detail": string;
   readonly "serviceClasses": ReadonlyArray<string>;
   readonly "toolIds": ReadonlyArray<string>;
-  readonly "baseEnvironmentId": string | null;
-  readonly "pinned": boolean;
+  readonly "canRemove": boolean;
 };
 
 export type EnvironmentStatusInput = {
@@ -871,14 +986,13 @@ export type EnvironmentStatusInput = {
   readonly "extensionIds": ReadonlyArray<string>;
   readonly "ready": boolean;
   readonly "name"?: string;
-  readonly "source"?: "developer" | "official" | "package";
+  readonly "source"?: "official" | "package";
   readonly "revision"?: string;
   readonly "state"?: "changed" | "declared" | "failed" | "missing" | "preparing" | "ready";
   readonly "detail"?: string;
   readonly "serviceClasses"?: ReadonlyArray<string>;
   readonly "toolIds"?: ReadonlyArray<string>;
-  readonly "baseEnvironmentId"?: string | null;
-  readonly "pinned"?: boolean;
+  readonly "canRemove"?: boolean;
 };
 
 export type EnvironmentUsage = {
@@ -886,6 +1000,8 @@ export type EnvironmentUsage = {
   readonly "uniqueFileBytes": number;
   readonly "sharedLinkBytes": number;
   readonly "exclusiveFileBytes": number;
+  readonly "allocatedBytes": number | null;
+  readonly "exclusiveAllocatedBytes": number | null;
 };
 
 export type EnvironmentUsageInput = {
@@ -893,6 +1009,8 @@ export type EnvironmentUsageInput = {
   readonly "uniqueFileBytes"?: number;
   readonly "sharedLinkBytes"?: number;
   readonly "exclusiveFileBytes"?: number;
+  readonly "allocatedBytes"?: number | null;
+  readonly "exclusiveAllocatedBytes"?: number | null;
 };
 
 export type EventEnvelope = {
@@ -988,6 +1106,7 @@ export type ExtensionDetail = {
   readonly "services": ReadonlyArray<ExtensionServiceDetail>;
   readonly "tools": ReadonlyArray<ExtensionTool>;
   readonly "skills": ReadonlyArray<ExtensionSkillDetail>;
+  readonly "application": null | ApplicationManifest;
 };
 
 export type ExtensionDetailInput = {
@@ -995,6 +1114,7 @@ export type ExtensionDetailInput = {
   readonly "services": ReadonlyArray<ExtensionServiceDetailInput>;
   readonly "tools": ReadonlyArray<ExtensionToolInput>;
   readonly "skills": ReadonlyArray<ExtensionSkillDetailInput>;
+  readonly "application"?: null | ApplicationManifestInput;
 };
 
 export type ExtensionImportRequest = {
@@ -1021,14 +1141,6 @@ export type ExtensionInstallPlanInput = {
   readonly "runtimeKind": "bundled" | "native" | "pixi" | "shared" | "workspace";
   readonly "action": "bundled" | "create" | "none" | "reuse" | "shared" | "workspace";
   readonly "requiresNetwork": boolean;
-};
-
-export type ExtensionRuntimeRequest = {
-  readonly "environmentId": string | null;
-};
-
-export type ExtensionRuntimeRequestInput = {
-  readonly "environmentId": string | null;
 };
 
 export type ExtensionServiceDetail = {
@@ -1066,7 +1178,14 @@ export type ExtensionStatus = {
   readonly "skillIds": ReadonlyArray<string>;
   readonly "resourceIds": ReadonlyArray<string>;
   readonly "runtimeEnvironment": string | null;
-  readonly "runtimeSelectable": boolean;
+  readonly "application": boolean;
+  readonly "sourceCheckout": boolean;
+  readonly "sourcePath": string | null;
+  readonly "running": boolean;
+  readonly "managed": boolean;
+  readonly "releaseSha256": string | null;
+  readonly "applicationOperation": null | ApplicationOperation;
+  readonly "runningSource": boolean;
 };
 
 export type ExtensionStatusInput = {
@@ -1084,7 +1203,14 @@ export type ExtensionStatusInput = {
   readonly "skillIds"?: ReadonlyArray<string>;
   readonly "resourceIds"?: ReadonlyArray<string>;
   readonly "runtimeEnvironment"?: string | null;
-  readonly "runtimeSelectable"?: boolean;
+  readonly "application"?: boolean;
+  readonly "sourceCheckout"?: boolean;
+  readonly "sourcePath"?: string | null;
+  readonly "running"?: boolean;
+  readonly "managed"?: boolean;
+  readonly "releaseSha256"?: string | null;
+  readonly "applicationOperation"?: null | ApplicationOperationInput;
+  readonly "runningSource"?: boolean;
 };
 
 export type ExtensionToggleRequest = {
@@ -2651,6 +2777,16 @@ export type HotkeyBindingInput = {
   readonly "message"?: string;
 };
 
+export type ImportApplication = {
+  readonly "location": string;
+  readonly "sha256": string;
+};
+
+export type ImportApplicationInput = {
+  readonly "location": string;
+  readonly "sha256": string;
+};
+
 export type In = {
   readonly "showOnNode"?: boolean;
 };
@@ -2711,6 +2847,56 @@ export type ManagedProcessResult = {
 export type ManagedProcessResultInput = {
   readonly "serviceId": string;
   readonly "running": boolean;
+};
+
+export type ManagementJob = {
+  readonly "jobId": string;
+  readonly "request": ManagementJobRequest;
+  readonly "state": "cancelled" | "failed" | "queued" | "running" | "succeeded";
+  readonly "createdAt": number;
+  readonly "startedAt": number | null;
+  readonly "finishedAt": number | null;
+  readonly "detail": string;
+  readonly "cancelRequested": boolean;
+  readonly "cancellable": boolean;
+};
+
+export type ManagementJobInput = {
+  readonly "jobId": string;
+  readonly "request": ManagementJobRequestInput;
+  readonly "state": "cancelled" | "failed" | "queued" | "running" | "succeeded";
+  readonly "createdAt": number;
+  readonly "startedAt"?: number | null;
+  readonly "finishedAt"?: number | null;
+  readonly "detail"?: string;
+  readonly "cancelRequested"?: boolean;
+  readonly "cancellable"?: boolean;
+};
+
+export type ManagementJobLog = {
+  readonly "log": string;
+};
+
+export type ManagementJobLogInput = {
+  readonly "log": string;
+};
+
+export type ManagementJobRequest = {
+  readonly "action": "clean-unused-environments" | "deselect-application" | "disable-extension" | "enable-extension" | "import-application" | "import-extension" | "install-extension" | "prepare-application" | "prepare-environment" | "remove-environment" | "select-application" | "start-application" | "start-source" | "uninstall-application" | "uninstall-extension" | "update-application";
+  readonly "extensionId": string | null;
+  readonly "environmentId": string | null;
+  readonly "package": null | ExtensionImportRequest;
+  readonly "location": string | null;
+  readonly "sha256": string | null;
+};
+
+export type ManagementJobRequestInput = {
+  readonly "action": "clean-unused-environments" | "deselect-application" | "disable-extension" | "enable-extension" | "import-application" | "import-extension" | "install-extension" | "prepare-application" | "prepare-environment" | "remove-environment" | "select-application" | "start-application" | "start-source" | "uninstall-application" | "uninstall-extension" | "update-application";
+  readonly "extensionId"?: string | null;
+  readonly "environmentId"?: string | null;
+  readonly "package"?: null | ExtensionImportRequestInput;
+  readonly "location"?: string | null;
+  readonly "sha256"?: string | null;
 };
 
 export type MediaFrameMapping = {
@@ -3031,16 +3217,6 @@ export type PresentationCommandInput = {
   readonly "tsMs"?: number | null;
 };
 
-export type PresetEnvironmentStatus = {
-  readonly "environment": string;
-  readonly "ready": boolean;
-};
-
-export type PresetEnvironmentStatusInput = {
-  readonly "environment": string;
-  readonly "ready": boolean;
-};
-
 export type ProbeProviderRequest = {
   readonly "protocol": "anthropic" | "openai_chat" | "openai_responses" | "systemone";
   readonly "endpoint": string;
@@ -3291,12 +3467,22 @@ export type RuntimeStorageStatus = {
   readonly "path": string;
   readonly "cachePath": string;
   readonly "canChange": boolean;
+  readonly "environmentUsage": EnvironmentUsage;
+  readonly "cacheUsage": EnvironmentUsage;
+  readonly "totalUsage": EnvironmentUsage;
+  readonly "unusedEnvironments": ReadonlyArray<UnusedEnvironment>;
+  readonly "usageUpdatedAt": number | null;
 };
 
 export type RuntimeStorageStatusInput = {
   readonly "path": string;
   readonly "cachePath": string;
   readonly "canChange": boolean;
+  readonly "environmentUsage"?: EnvironmentUsageInput;
+  readonly "cacheUsage"?: EnvironmentUsageInput;
+  readonly "totalUsage"?: EnvironmentUsageInput;
+  readonly "unusedEnvironments"?: ReadonlyArray<UnusedEnvironmentInput>;
+  readonly "usageUpdatedAt"?: number | null;
 };
 
 export type SchemaMode = "basic_recursive";
@@ -3647,6 +3833,24 @@ export type Source2 = "data_out_ports";
 
 export type Source2Input = "data_out_ports";
 
+export type SourceApplicationStatus = {
+  readonly "extensionId": string;
+  readonly "version": string;
+  readonly "state": "failed" | "running" | "stopped";
+  readonly "endpoints": ReadonlyArray<ApplicationEndpoint>;
+  readonly "logPath": string;
+  readonly "managed": boolean;
+};
+
+export type SourceApplicationStatusInput = {
+  readonly "extensionId": string;
+  readonly "version": string;
+  readonly "state": "failed" | "running" | "stopped";
+  readonly "endpoints": ReadonlyArray<ApplicationEndpointInput>;
+  readonly "logPath": string;
+  readonly "managed"?: boolean;
+};
+
 export type SourceInput = "data_in_ports";
 
 export type StartAgentRunRequest = {
@@ -3875,6 +4079,18 @@ export type TrackSceneInput = {
   readonly "nowMs": number;
 };
 
+export type UnusedEnvironment = {
+  readonly "environmentId": string;
+  readonly "path": string;
+  readonly "usage": EnvironmentUsage;
+};
+
+export type UnusedEnvironmentInput = {
+  readonly "environmentId": string;
+  readonly "path": string;
+  readonly "usage": EnvironmentUsageInput;
+};
+
 export type UpdateAssetRequest = {
   readonly "name": string;
   readonly "content": JsonValue;
@@ -4010,12 +4226,15 @@ export type WaveSceneInput = {
 };
 
 export interface ApiRequests {
+  readonly "POST /api/management-jobs": ManagementJobRequestInput;
+  readonly "POST /api/applications/import": ImportApplicationInput;
+  readonly "POST /api/applications/{extension_id}/prepare": ApplicationVersionInput;
+  readonly "POST /api/applications/{extension_id}/select": ApplicationVersionInput;
+  readonly "POST /api/applications/{extension_id}/update": ApplicationVersionInput;
+  readonly "POST /api/applications/{extension_id}/uninstall": ApplicationVersionInput;
   readonly "POST /api/extension-tools/{extension_id}/{tool_id}/run": ToolRunRequestInput;
   readonly "POST /api/extensions/import": ExtensionImportRequestInput;
   readonly "PUT /api/environments/storage": RuntimeStorageRequestInput;
-  readonly "POST /api/environments": EnvironmentCreateRequestInput;
-  readonly "PUT /api/environments/{environment_id}/retention": EnvironmentRetentionRequestInput;
-  readonly "PUT /api/extensions/{extension_id}/runtime": ExtensionRuntimeRequestInput;
   readonly "PUT /api/extensions/{extension_id}/enabled": ExtensionToggleRequestInput;
   readonly "POST /api/catalog/nodes": CreateCatalogNodeRequestInput;
   readonly "POST /api/assets": CreateAssetRequestInput;
@@ -4057,6 +4276,23 @@ export interface ApiRequests {
 }
 
 export interface ApiResponses {
+  readonly "GET /api/management-jobs": ReadonlyArray<ManagementJob>;
+  readonly "POST /api/management-jobs": ManagementJob;
+  readonly "GET /api/management-jobs/{job_id}": ManagementJob;
+  readonly "GET /api/management-jobs/{job_id}/logs": ManagementJobLog;
+  readonly "POST /api/management-jobs/{job_id}/cancel": ManagementJob;
+  readonly "GET /api/applications": ReadonlyArray<ApplicationStatus>;
+  readonly "POST /api/applications/import": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/prepare": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/select": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/deselect": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/update": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/uninstall": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/start": ManagementJob;
+  readonly "POST /api/applications/{extension_id}/stop": ApplicationOperation;
+  readonly "GET /api/source-applications": ReadonlyArray<SourceApplicationStatus>;
+  readonly "POST /api/source-applications/{extension_id}/start": ManagementJob;
+  readonly "POST /api/source-applications/{extension_id}/stop": ApplicationOperation;
   readonly "GET /api/extension-tools": ReadonlyArray<ToolView>;
   readonly "POST /api/extension-tools/{extension_id}/{tool_id}/run": ToolJob;
   readonly "GET /api/tool-jobs": ReadonlyArray<ToolJob>;
@@ -4065,31 +4301,28 @@ export interface ApiResponses {
   readonly "GET /api/extension-resources/{extension_id}/{resource_id}/file": Blob;
   readonly "GET /api/extension-resources": ReadonlyArray<CapabilityResource>;
   readonly "GET /api/extension-resources/{extension_id}/{resource_id}": ResourceContent;
+  readonly "GET /api/extensions": ReadonlyArray<ExtensionStatus>;
+  readonly "POST /api/extensions/import": ManagementJob;
+  readonly "GET /api/extensions/{extension_id}/detail": ExtensionDetail;
+  readonly "GET /api/extensions/{extension_id}/plan": ExtensionInstallPlan;
+  readonly "GET /api/environments": ReadonlyArray<EnvironmentStatus>;
+  readonly "GET /api/environments/storage": RuntimeStorageStatus;
+  readonly "PUT /api/environments/storage": RuntimeStorageStatus;
+  readonly "POST /api/environments/unused/clean": ManagementJob;
+  readonly "GET /api/environments/{environment_id}/detail": EnvironmentDetail;
+  readonly "POST /api/environments/{environment_id}/prepare": ManagementJob;
+  readonly "POST /api/environments/{environment_id}/cancel": ManagementJob;
+  readonly "DELETE /api/environments/{environment_id}": ManagementJob;
+  readonly "POST /api/extensions/{extension_id}/install": ManagementJob;
+  readonly "POST /api/extensions/{extension_id}/cancel": ManagementJob;
+  readonly "PUT /api/extensions/{extension_id}/enabled": ManagementJob;
+  readonly "DELETE /api/extensions/{extension_id}": ManagementJob;
   readonly "GET /api/health": HealthStatus;
   readonly "GET /api/logs": ReadonlyArray<EventEnvelope>;
   readonly "GET /api/capabilities": CapabilitiesResponse;
   readonly "GET /api/media/rtc-configuration": BrowserRtcConfiguration;
   readonly "GET /api/catalog": CatalogSnapshot;
   readonly "POST /api/catalog/refresh": CatalogSnapshot;
-  readonly "GET /api/extensions": ReadonlyArray<ExtensionStatus>;
-  readonly "POST /api/extensions/import": ReadonlyArray<ExtensionStatus>;
-  readonly "GET /api/extensions/{extension_id}/detail": ExtensionDetail;
-  readonly "GET /api/extensions/{extension_id}/plan": ExtensionInstallPlan;
-  readonly "GET /api/environments": ReadonlyArray<EnvironmentStatus>;
-  readonly "GET /api/environments/presets": ReadonlyArray<PresetEnvironmentStatus>;
-  readonly "GET /api/environments/storage": RuntimeStorageStatus;
-  readonly "PUT /api/environments/storage": RuntimeStorageStatus;
-  readonly "POST /api/environments": EnvironmentStatus;
-  readonly "GET /api/environments/{environment_id}/detail": EnvironmentDetail;
-  readonly "POST /api/environments/{environment_id}/prepare": EnvironmentStatus;
-  readonly "POST /api/environments/{environment_id}/cancel": EnvironmentStatus;
-  readonly "PUT /api/environments/{environment_id}/retention": EnvironmentStatus;
-  readonly "DELETE /api/environments/{environment_id}": void;
-  readonly "PUT /api/extensions/{extension_id}/runtime": ExtensionStatus;
-  readonly "POST /api/extensions/{extension_id}/install": ExtensionStatus;
-  readonly "POST /api/extensions/{extension_id}/cancel": ExtensionStatus;
-  readonly "PUT /api/extensions/{extension_id}/enabled": ExtensionStatus;
-  readonly "DELETE /api/extensions/{extension_id}": ExtensionStatus;
   readonly "POST /api/catalog/nodes": ServiceNode | OperatorNode;
   readonly "GET /api/assets": ReadonlyArray<AssetSummary>;
   readonly "POST /api/assets": AssetRecord;

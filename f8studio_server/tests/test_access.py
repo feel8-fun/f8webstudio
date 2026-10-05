@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI, WebSocket
 from fastapi.testclient import TestClient
 from starlette.responses import HTMLResponse
@@ -65,3 +66,31 @@ def test_access_file_is_private_and_client_credentials_are_origin_scoped(tmp_pat
     assert client_access_token('http://localhost:8210/api') == access.token
     assert client_access_token('http://localhost:8211') is None
     assert client_access_token('https://example.com') is None
+
+
+@pytest.mark.parametrize('host', ['localhost', '127.0.0.1', '[::1]'])
+def test_platform_navigation_opens_studio_without_manual_token(host: str) -> None:
+    with TestClient(access_app(), base_url=f'http://{host}:8210', client=('127.0.0.1', 40000)) as client:
+        response = client.get('/?view=graph', headers={
+            'Sec-Fetch-Site': 'same-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document',
+            'Referer': f'http://{host}:8209/?view=extensions',
+        })
+        assert response.text == 'studio'
+        assert 'test-secret' not in response.text
+        assert 'HttpOnly' in response.headers['set-cookie']
+        assert client.get('/api/secret').status_code == 200
+        with client.websocket_connect(f'ws://{host}:8210/api/events') as socket:
+            assert socket.receive_json() == {'ok': True}
+
+
+@pytest.mark.parametrize('fetch_headers', [
+    {'Sec-Fetch-Site': 'cross-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document'},
+    {'Sec-Fetch-Site': 'same-site', 'Sec-Fetch-Mode': 'cors', 'Sec-Fetch-Dest': 'empty'},
+    {'Sec-Fetch-Site': 'same-site', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'iframe'},
+    {'Sec-Fetch-Site': 'same-site', 'Origin': 'http://localhost:8209'},
+])
+def test_other_websites_cannot_bootstrap_studio_session(fetch_headers: dict[str, str]) -> None:
+    with TestClient(access_app(), base_url='http://localhost:8210', client=('127.0.0.1', 40000)) as client:
+        response = client.get('/', headers=fetch_headers)
+        assert 'set-cookie' not in response.headers
+        assert client.get('/api/secret').status_code == 401

@@ -4,12 +4,9 @@ version = "0.1.0"
 description = "Qt-free local application server for Feel8 Web Studio."
 requires-python = ">=3.14,<3.15"
 dependencies = [
-    "f8platform",
     "packaging>=25,<27",
-    "pystray>=0.19.5,<0.20",
-    "pillow>=11,<13",
     "f8studio-core",
-    "f8pysdk[media]",
+    "f8pysdk[media,platform-client]",
     "fastapi>=0.120,<1",
     "uvicorn>=0.35,<1",
     "websockets>=16,<17",

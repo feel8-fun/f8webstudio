@@ -6,6 +6,10 @@ import argparse
 import logging
 import os
 import sys
+from uuid import uuid4
+import msgspec
+from f8pysdk.platform_client import PlatformClient
+from f8pysdk.platform_spec import SourceApplicationRegistration
 from threading import Thread
 from ipaddress import ip_address
 from pathlib import Path
@@ -14,7 +18,7 @@ import uvicorn
 
 from f8media_protocol.client import RemoteMediaGateway, RemoteMediaGatewayConfig
 
-from .app import DEFAULT_ALLOWED_HOSTS, create_app, default_data_dir
+from .app import DEFAULT_ALLOWED_HOSTS, SERVER_VERSION, create_app, default_data_dir
 from .access import StudioAccess
 from .browser import run_server
 from .defaults import DEFAULT_STUDIO_PORT
@@ -24,7 +28,6 @@ from .server_instance import StudioServerAlreadyRunningError, single_server_inst
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the local Feel8 Web Studio server.")
-    parser.add_argument("--tray", action=argparse.BooleanOptionalAction, default=False, help="Manage Studio from the desktop tray")
     parser.add_argument("--exit-on-stdin-close", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument(
@@ -41,12 +44,12 @@ def _parse_args() -> argparse.Namespace:
                         help="Start without opening a browser.")
     parser.add_argument(
         "--media-gateway-url",
-        help="Loopback URL for the Media Gateway. Defaults to a free port when Studio manages the gateway.",
+        help="Loopback URL for the Media Gateway. Defaults to the provider managed by the Launcher.",
     )
     parser.add_argument(
         "--external-media-gateway",
         action="store_true",
-        help="Connect to an already running gateway at --media-gateway-url instead of starting one.",
+        help="Require an explicit --media-gateway-url for the independently running gateway.",
     )
     parser.add_argument(
         "--turn-url",
@@ -69,12 +72,6 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    if args.tray:
-        from .tray import run_tray
-        forwarded = [arg for arg in sys.argv[1:] if arg not in {"--tray", "--no-tray"}]
-        browser_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
-        run_tray(arguments=forwarded, url=f"http://{browser_host}:{args.port}", data_dir=default_data_dir())
-        return
     host = str(args.host).strip().lower()
     if host != "localhost":
         try:
@@ -111,10 +108,15 @@ def main() -> None:
     )
     try:
         with single_server_instance():
+            platform = PlatformClient.from_environment()
+            gateway_url = args.media_gateway_url
+            if gateway_url is None:
+                dependencies = platform.application_dependencies('webstudio', start='F8_APPLICATION_INSTANCE' not in os.environ)
+                gateway_url = next(item.url for item in dependencies if item.name == 'media-gateway.http')
             gateway = RemoteMediaGateway(
                 RemoteMediaGatewayConfig(
-                    base_url=args.media_gateway_url,
-                    manage_process=not args.external_media_gateway,
+                    base_url=gateway_url,
+                    manage_process=False,
                 )
             )
             allowed_hosts = (set(DEFAULT_ALLOWED_HOSTS) - {"testserver"}) | configured_allowed_hosts
@@ -124,16 +126,25 @@ def main() -> None:
                 f"http://{'[' + name + ']' if ':' in name else name}:{args.port}" for name in sorted(allowed_hosts)
             ))
             os.environ["F8STUDIO_ACCESS_TOKEN"] = access.token
+            external_source = 'F8_APPLICATION_INSTANCE' not in os.environ
+            if external_source:
+                os.environ['F8_APPLICATION_INSTANCE'] = uuid4().hex
             app = create_app(
                 web_dist=args.web_dist,
                 access=access,
                 media_gateway=gateway,
                 allowed_hosts=tuple(allowed_hosts),
                 rtc_configuration=rtc_configuration,
+                platform=platform,
             )
             local_host = "127.0.0.1" if host == "0.0.0.0" else "::1" if host == "::" else host
             url_host = f"[{local_host}]" if ":" in local_host else local_host
             os.environ["F8STUDIO_SERVER_URL"] = f"http://{url_host}:{args.port}"
+            if external_source:
+                response = platform.request('POST', '/api/source-applications/register', content=msgspec.json.encode(
+                    SourceApplicationRegistration(extension_id='webstudio', version=SERVER_VERSION,
+                        instance=os.environ['F8_APPLICATION_INSTANCE'], url=os.environ['F8STUDIO_SERVER_URL'])))
+                response.raise_for_status()
             server = uvicorn.Server(uvicorn.Config(
                 app, host=host, port=args.port, log_level="info", timeout_graceful_shutdown=5,
             ))

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fetchEnvironments, fetchExtensions } from '../api/client';
 import type { EnvironmentStatus, ExtensionStatus } from '../api/contracts';
 import { RuntimeEnvironments } from './RuntimeEnvironments';
+import { ManagementTasks, useManagementJobs } from './ManagementTasks';
 
 export function EnvironmentsWorkspace() {
   const [environments, setEnvironments] = useState<readonly EnvironmentStatus[]>([]);
@@ -31,6 +32,8 @@ export function EnvironmentsWorkspace() {
     return () => controller.abort();
   }, [load]);
 
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const tasks = useManagementJobs(async (completed) => { await load(); if (completed) setRefreshRevision((value) => value + 1); });
   const working = environments.some((environment) => environment.state === 'preparing') ||
     extensions.some((extension) => extension.state === 'installing');
   useEffect(() => {
@@ -50,12 +53,13 @@ export function EnvironmentsWorkspace() {
   return <div className="services-workspace environments-workspace">
     <div className="services-toolbar">
       <span>{loaded ? `${environments.length} environments` : 'Loading environments…'}</span>
-      <button className="icon-button" type="button" title="Refresh runtime environments" aria-label="Refresh runtime environments" onClick={() => void load()}><RefreshCw size={16} /></button>
+      <button className="icon-button" type="button" title="Refresh runtime environments" aria-label="Refresh runtime environments" onClick={() => { setRefreshRevision((value) => value + 1); void load(); }}><RefreshCw size={16} /></button>
     </div>
     {error && <div className="services-error" role="alert">{error}</div>}
     <div className="services-body">
+      <ManagementTasks jobs={tasks.jobs} error={tasks.error} />
       <div className="services-extensions">
-        {loaded && <RuntimeEnvironments environments={environments} extensions={extensions} onRefresh={load} locked={working} />}
+        {loaded && <RuntimeEnvironments environments={environments} extensions={extensions} onRefresh={load} locked={false} refreshRevision={refreshRevision} />}
       </div>
     </div>
   </div>;

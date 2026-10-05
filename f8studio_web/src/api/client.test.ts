@@ -29,9 +29,10 @@ it.each(['native', 'bundled', 'workspace', 'pixi', 'shared'])('accepts %s extens
     serviceClasses: ['thirdparty.tracker'] };
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Response(JSON.stringify([extension]))));
   await expect(fetchExtensions()).resolves.toEqual([extension]);
-  await expect(importExtensionPackage('https://publisher.example/tracker.zip', 'a'.repeat(64))).resolves.toEqual([extension]);
-  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Response(JSON.stringify(extension))));
-  await expect(installExtension('tracker')).resolves.toEqual(extension);
+  const job = { jobId: 'task', request: { action: 'install-extension', extensionId: 'tracker' }, state: 'queued', createdAt: 1 };
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Response(JSON.stringify(job), { status: 202 })));
+  await expect(importExtensionPackage('https://publisher.example/tracker.zip', 'a'.repeat(64))).resolves.toEqual(job);
+  await expect(installExtension('tracker')).resolves.toEqual(job);
   const environment = { runtimeKind, environmentId: 'onnx-runtime', ready: true, extensionIds: ['tracker'] };
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Response(JSON.stringify([environment]))));
   await expect(fetchEnvironments()).resolves.toEqual([environment]);

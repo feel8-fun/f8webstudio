@@ -23,7 +23,7 @@ from ..local_integration import (
 from ..project_repository import utc_now_text
 from .evidence import conversation_prompt, evidence_prompt
 from .execution import AgentToolExecution, ApprovalDeniedError
-from ..extension_tools import ExtensionTools
+from f8pysdk.platform_client import PlatformTools
 from .model_tools import AgentModelTools
 from .models import (
     AgentImage,
@@ -97,7 +97,7 @@ class AgentService:
         skills: AgentSkillLibrary,
         events: EventJournal,
         providers: AgentProviderRegistry | None = None,
-        extension_tools: ExtensionTools | None = None,
+        extension_tools: PlatformTools | None = None,
     ) -> None:
         self._sessions = AgentSessions(database_path, events)
         self._execution = AgentToolExecution(self._sessions, tools)

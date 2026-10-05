@@ -9,7 +9,7 @@ from typing import cast
 from uuid import uuid4
 
 import msgspec
-from f8media_protocol.client import RemoteMediaGateway
+from f8media_protocol.client import RemoteMediaGateway, RemoteMediaGatewayConfig
 from f8media_protocol.contracts import MediaGateway
 from f8pysdk.generated import (
     F8BooleanTypeSchema,
@@ -35,8 +35,7 @@ from .database import StudioDatabase
 from .editor import EditorSessionService
 from .runtime_sync import service_was_deployed
 from .events import EventJournal
-from f8platform.extensions import ExtensionManager
-from .extension_tools import ExtensionTools
+from f8pysdk.platform_client import PlatformClient
 from .job_repository import JobRepository
 from .jobs import DeployCoordinator
 from .monitors import RuntimeMonitorStore
@@ -64,6 +63,7 @@ class StudioApplication:
         runtime_config: RuntimeConfig | None = None,
         service_roots: tuple[Path, ...] | None = None,
         media_gateway: MediaGateway | None = None,
+        platform: PlatformClient | None = None,
     ) -> None:
         self.data_dir = data_dir.resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -82,10 +82,10 @@ class StudioApplication:
             ),
             presentation=self.presentation,
         )
-        self.extensions = ExtensionManager(self.data_dir)
-        self.extension_tools = ExtensionTools(self.extensions, self.data_dir / "tool-jobs")
+        self.platform = platform or PlatformClient.from_environment()
+        self.extension_tools = self.platform.tools
         self.catalog = CatalogService(roots=service_roots, builtins=(self.studio_runtime.describe,),
-                                      extension_indexes=self.extensions.active_indexes if self.extensions.has_catalog else None)
+                                      platform_describes=lambda: self.platform.inventory().describes)
         self.database = StudioDatabase(self.data_dir / "studio.sqlite3")
         project_repository = ProjectRepository(self.database)
         self.projects = ProjectService(project_repository, spec_resolver=self.catalog.spec_for_node)
@@ -103,13 +103,12 @@ class StudioApplication:
         )
         self.monitors = RuntimeMonitorStore(self.events, studio_service_id=self.studio_runtime.service_id)
         if media_gateway is None:
-            media_gateway = RemoteMediaGateway()
+            media_gateway = RemoteMediaGateway(RemoteMediaGatewayConfig(base_url='http://127.0.0.1:8211', manage_process=False))
         self.media_gateway = media_gateway
         self.processes = ManagedServiceProcesses(
-            catalog=self.catalog,
             runtime_config=config,
             events=self.events,
-            service_enabled=self.extensions.service_enabled,
+            platform=self.platform,
         )
         self.jobs = DeployCoordinator(
             projects=self.projects,
@@ -134,7 +133,7 @@ class StudioApplication:
             tools=self.tools,
             editor=self.editor,
             local=self.local,
-            skills=AgentSkillLibrary(user_root=self.data_dir / "agent-skills", extension_files=self.extensions.active_skill_files),
+            skills=AgentSkillLibrary(user_root=self.data_dir / "agent-skills", extension_content=lambda: self.platform.inventory().skills),
             extension_tools=self.extension_tools,
             providers=providers,
             events=self.events,
@@ -156,8 +155,6 @@ class StudioApplication:
 
     async def close(self) -> None:
         await self.agents.close()
-        await self.extension_tools.close()
-        await self.extensions.close()
         await self.decisions.close()
         await self.local.close()
         await self.jobs.close()
@@ -167,6 +164,7 @@ class StudioApplication:
         await self.runtime.close()
         await self.presentation.close()
         await asyncio.to_thread(self.editor.close)
+        self.platform.close()
 
     def _validate_hotkey(self, binding: HotkeyBinding) -> None:
         document, node, field = self._hotkey_target(binding)

@@ -7,10 +7,6 @@ on:
         description: SDK source commit containing application publication contracts
         required: true
         type: string
-      platform_ref:
-        description: Platform library source commit
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -28,11 +24,6 @@ jobs:
           repository: feel8-fun/f8sdk
           ref: ${{ inputs.sdk_ref }}
           path: .sdk
-      - uses: actions/checkout@v5
-        with:
-          repository: feel8-fun/f8platform
-          ref: ${{ inputs.platform_ref }}
-          path: .platform
       - uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: v0.81.0

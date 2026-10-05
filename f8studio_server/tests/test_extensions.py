@@ -87,6 +87,26 @@ async def _finish(manager: ExtensionManager, extension_id: str, catalog: Catalog
     assert manager.status(extension_id).state == 'installed', manager.status(extension_id).detail
 
 
+def test_unbuilt_development_extension_does_not_block_other_extensions(tmp_path: Path) -> None:
+    _manager, source = _fixture(tmp_path, preinstalled=True)
+    (source / 'alpha.json').unlink()
+    manager = ExtensionManager(tmp_path / 'fresh-data', base_index=source / 'config/service-index.json')
+    assert manager.status('alpha').state == 'failed'
+    assert manager.status('alpha').detail
+    assert manager.status('beta').state == 'installed'
+    catalog = CatalogService(extension_indexes=manager.active_indexes)
+    assert [spec.serviceClass for spec in catalog.snapshot().services] == ['test.beta']
+
+
+def test_imported_extension_requires_its_description_payload(tmp_path: Path) -> None:
+    manager, _source = _fixture(tmp_path)
+    _publisher, payload = _fixture(tmp_path / 'publisher', names=('gamma',))
+    (payload / 'gamma.json').unlink()
+    with pytest.raises(ValueError, match='Missing or unsafe payload path'):
+        manager._add_catalog(payload, preinstalled=False)
+    assert 'gamma' not in manager._manifests
+
+
 @pytest.mark.parametrize('variable', ['F8_MODEL_ROOT', 'F8_RESOURCE_ROOT'])
 def test_model_metadata_and_registration_use_configured_writable_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variable: str,

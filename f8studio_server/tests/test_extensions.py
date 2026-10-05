@@ -87,7 +87,9 @@ async def _finish(manager: ExtensionManager, extension_id: str, catalog: Catalog
     assert manager.status(extension_id).state == 'installed', manager.status(extension_id).detail
 
 
-def test_unbuilt_development_extension_does_not_block_other_extensions(tmp_path: Path) -> None:
+def test_unbuilt_development_extension_does_not_block_other_extensions(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
     _manager, source = _fixture(tmp_path, preinstalled=True)
     (source / 'alpha.json').unlink()
     manager = ExtensionManager(tmp_path / 'fresh-data', base_index=source / 'config/service-index.json')
@@ -96,6 +98,7 @@ def test_unbuilt_development_extension_does_not_block_other_extensions(tmp_path:
     assert manager.status('beta').state == 'installed'
     catalog = CatalogService(extension_indexes=manager.active_indexes)
     assert [spec.serviceClass for spec in catalog.snapshot().services] == ['test.beta']
+    assert 'Traceback' not in caplog.text
 
 
 def test_imported_extension_requires_its_description_payload(tmp_path: Path) -> None:

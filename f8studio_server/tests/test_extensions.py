@@ -148,7 +148,7 @@ def _runtime_probe() -> RuntimeProbe:
 
 
 def test_official_extension_environment_names_match_all_platform_service_launches() -> None:
-    config = Path(__file__).resolve().parents[4] / 'config'
+    config = Path(__file__).resolve().parents[4] / 'build/workspace/config'
     extensions = msgspec.json.decode((config / 'extensions.json').read_bytes(), type=ExtensionCatalog)
     index = read_service_index(config / 'service-index.json')
     services = {item.serviceClass: item for item in index.services}
@@ -156,7 +156,7 @@ def test_official_extension_environment_names_match_all_platform_service_launche
         if manifest.runtime.kind == 'workspace':
             for name in manifest.service_classes:
                 for relative in services[name].manifests.values():
-                    launch = yaml.safe_load(ServicePaths.for_index(config / "service-index.json").package_path(relative, relative_to=config).read_text())['launch']
+                    launch = yaml.safe_load(Path(relative.replace('${F8_PACKAGE_ROOT}', str(config.parents[2]))).read_text())['launch']
                     assert launch['command'] == 'pixi'
                     assert launch['args'][:3] == ['run', '-e', manifest.runtime.environment], name
 
@@ -654,7 +654,7 @@ def test_generic_extension_api_and_plans(tmp_path: Path) -> None:
 
 
 def test_repository_catalog_owns_every_registered_service() -> None:
-    root = Path(__file__).resolve().parents[4]
+    root = Path(__file__).resolve().parents[4] / 'build/workspace'
     catalog = msgspec.json.decode((root / 'config/extensions.json').read_bytes(), type=ExtensionCatalog)
     index = read_service_index(root / 'config/service-index.json')
     classes = [name for extension in catalog.extensions for name in extension.service_classes]

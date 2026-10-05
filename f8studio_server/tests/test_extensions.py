@@ -982,6 +982,40 @@ def test_independent_runtime_migrates_matching_records_and_reconciles_changed_de
         asyncio.run(prepare())
 
 
+@pytest.mark.parametrize('missing', ['describe', 'manifest'])
+def test_changed_environment_with_missing_retained_files_does_not_crash_catalog(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, missing: str,
+) -> None:
+    from f8platform.extension_models import ExtensionRecord
+
+    _unused, root = _fixture(tmp_path, kind='pixi', names=('alpha',))
+    catalog_path = root / 'config/extensions.json'
+    catalog = json.loads(catalog_path.read_text())
+    catalog['extensions'][0]['runtime']['kind'] = 'workspace'
+    catalog['preinstalled'] = ['alpha']
+    catalog_path.write_text(json.dumps(catalog))
+    data = tmp_path / 'data'
+    original = ExtensionManager(data, base_index=root / 'config/service-index.json')
+    registration = original._registration('alpha')
+    stale = json.loads(registration.read_text())
+    if missing == 'describe':
+        stale['services'][0]['describe'] = str(root / 'removed-runtime/alpha.json')
+    else:
+        stale['services'][0]['manifests']['any'] = str(root / 'removed-runtime/alpha.yml')
+    registration.write_text(json.dumps(stale))
+    original._commit_record('alpha', ExtensionRecord(
+        version='1.0.0', installed=True, enabled=True, environment_id='workspace-before-migration',
+    ))
+
+    restored = ExtensionManager(data, base_index=root / 'config/service-index.json')
+    assert restored.status('alpha').state == 'failed'
+    assert 'removed-runtime' in (restored.status('alpha').detail or '')
+    assert 'reinstall' in (restored.status('alpha').detail or '')
+    assert CatalogService(extension_indexes=restored.active_indexes).snapshot().services == ()
+    assert 'Cannot restore extension alpha' in caplog.text
+    assert any(record.exc_info for record in caplog.records)
+
+
 def test_independent_bundled_runtime_keeps_offline_prefix_and_lists_consumers(tmp_path: Path) -> None:
     from f8platform.environment_definitions import selected_manifest, write_manifest
     _unused, root = _fixture(tmp_path, names=('alpha',))

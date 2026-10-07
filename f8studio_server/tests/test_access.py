@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import pytest
 from fastapi import FastAPI, WebSocket
@@ -62,7 +63,8 @@ def test_access_file_is_private_and_client_credentials_are_origin_scoped(tmp_pat
     monkeypatch.setenv('F8STUDIO_DATA_DIR', str(tmp_path))
     monkeypatch.delenv('F8STUDIO_ACCESS_TOKEN', raising=False)
     access = StudioAccess.create(tmp_path, origins=('http://localhost:8210',))
-    assert (tmp_path / 'access.json').stat().st_mode & 0o777 == 0o600
+    if os.name != 'nt':
+        assert (tmp_path / 'access.json').stat().st_mode & 0o777 == 0o600
     assert client_access_token('http://localhost:8210/api') == access.token
     assert client_access_token('http://localhost:8211') is None
     assert client_access_token('https://example.com') is None

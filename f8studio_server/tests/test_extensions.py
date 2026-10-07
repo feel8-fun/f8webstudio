@@ -723,7 +723,12 @@ def test_published_extension_is_imported_installed_and_restored_from_its_own_pay
 
 @pytest.mark.parametrize('filename', ['../escape', '/absolute', 'folder\\escape', 'C:/escape'])
 def test_archive_paths_cannot_escape_payload(tmp_path: Path, filename: str) -> None:
-    archive = _archive({filename: b'bad'})
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w') as package:
+        info = zipfile.ZipInfo(filename)
+        info.filename = filename
+        package.writestr(info, b'bad')
+    archive = output.getvalue()
     request = ExtensionImportRequest(url=DownloadResponse.url, sha256=hashlib.sha256(archive).hexdigest())
     with patch('f8platform.extension_artifacts.urllib.request.urlopen', return_value=DownloadResponse(archive)):
         with pytest.raises(InvalidRequestError, match='archive path'):

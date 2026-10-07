@@ -2,6 +2,18 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import { App } from './App';
+import type { EnvironmentUsage, RuntimeStorageStatus } from '../api/contracts.gen';
+
+const usage: EnvironmentUsage = {
+  logicalBytes: 0, uniqueFileBytes: 0, sharedLinkBytes: 0,
+  exclusiveFileBytes: 0, allocatedBytes: null, exclusiveAllocatedBytes: null,
+};
+
+const storage: RuntimeStorageStatus = {
+  path: '/data', cachePath: '/data/cache', canChange: true,
+  environmentUsage: usage, cacheUsage: usage, totalUsage: usage,
+  unusedEnvironments: [], usageUpdatedAt: null,
+};
 
 afterEach(() => {
   cleanup();
@@ -16,7 +28,7 @@ beforeEach(() => {
     vi.fn().mockImplementation((input: string | URL | Request) => {
       const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : new URL(input.url).pathname;
       if (path === '/api/projects' || path === '/api/presentation' || path === '/api/extension-tools' || path === '/api/tool-jobs' || path === '/api/extensions' || path === '/api/environments') return Promise.resolve(new Response('[]', { status: 200 }));
-      if (path === '/api/environments/storage') return Promise.resolve(new Response(JSON.stringify({ path: '/data', cachePath: '/data/cache', canChange: true }), { status: 200 }));
+      if (path === '/api/environments/storage') return Promise.resolve(new Response(JSON.stringify(storage), { status: 200 }));
       if (path === '/api/catalog') return Promise.resolve(new Response('{"services":[],"operators":[]}', { status: 200 }));
       return Promise.resolve(new Response(
         JSON.stringify({

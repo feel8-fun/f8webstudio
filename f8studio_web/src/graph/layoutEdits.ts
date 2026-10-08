@@ -1,6 +1,6 @@
 import type { ResizeParams } from '@xyflow/react';
 import type { GraphOperation, StudioDocument } from '../api/contracts';
-import { absoluteFlowPosition, constrainOperatorPosition, operatorHeight, projectDocument, serviceChildInsetY,
+import { absoluteFlowPosition, constrainOperatorPosition, operatorHeight, operatorWidth, projectDocument, serviceChildInsetY,
   OPERATOR_WIDTH, OPERATOR_MIN_HEIGHT, SERVICE_WIDTH, SERVICE_MIN_HEIGHT, STUDIO_SERVICE_CLASS, type StudioFlowNode } from './projection';
 
 export function moveNodeOperations(document: StudioDocument, node: StudioFlowNode, nodes: readonly StudioFlowNode[], pointer?: { readonly x: number; readonly y: number }): GraphOperation[] {
@@ -61,7 +61,7 @@ export function moveNodeOperations(document: StudioDocument, node: StudioFlowNod
   const draggedNodes = nodes.map((candidate) => candidate.id === node.id ? node : candidate);
   const absolute = absoluteFlowPosition(node, draggedNodes);
   const center = {
-    x: absolute.x + (node.measured?.width ?? OPERATOR_WIDTH) / 2,
+    x: absolute.x + (node.measured?.width ?? operatorWidth(graphNode)) / 2,
     y: absolute.y + (node.measured?.height ?? OPERATOR_MIN_HEIGHT) / 2,
   };
   const dropPosition = pointer ?? center;
@@ -99,8 +99,9 @@ export function moveNodeOperations(document: StudioDocument, node: StudioFlowNod
     { x: absolute.x - target.position.x, y: absolute.y - target.position.y },
     width,
     height,
-    node.measured?.height ?? OPERATOR_MIN_HEIGHT,
+    node.measured?.height ?? operatorHeight(graphNode),
     serviceChildInsetY(target.data.graphNode),
+    operatorWidth(graphNode),
   );
   const currentLayout = document.layout.find((layout) => layout.nodeId === node.id);
   const operations: GraphOperation[] = [];
@@ -153,6 +154,7 @@ export function resizeServiceOperations(document: StudioDocument, nodeId: string
       bounds.height,
       operatorHeight(child),
       serviceChildInsetY(service),
+      operatorWidth(child),
     );
     const childLayout = document.layout.find((layout) => layout.nodeId === child.nodeId);
     operations.push({

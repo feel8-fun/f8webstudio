@@ -912,6 +912,10 @@ test('keeps one RW state label and preserves its editor when connected', async (
   await bandpassButton.click();
   await expect(page.locator('.react-flow__node.flow-node-operator')).toHaveCount(2);
   await expect(page.locator('.save-state')).toHaveText('Saved');
+  await bandpassButton.click();
+  await expect(page.locator('.react-flow__node.flow-node-operator')).toHaveCount(3);
+  await expect(page.locator('.save-state')).toHaveText('Saved');
+  await page.locator('.react-flow__controls-fitview').click();
   const statePorts = await page.evaluate(async (selectedProjectId) => {
     const response = await fetch(`/api/projects/${selectedProjectId}`);
     const record = await response.json() as {
@@ -924,7 +928,7 @@ test('keeps one RW state label and preserves its editor when connected', async (
       };
     };
     const operators = record.document.nodes.filter((node) => node.operatorClass === 'f8.bandpass_filter');
-    if (operators.length !== 2) throw new Error('Expected two Bandpass Filter operators');
+    if (operators.length !== 3) throw new Error('Expected three Bandpass Filter operators');
     const port = (node: typeof operators[number], direction: string) => {
       const found = node.ports.find((candidate) =>
         candidate.kind === 'state' && candidate.runtimeName === 'low_cutoff' && candidate.direction === direction);
@@ -932,6 +936,8 @@ test('keeps one RW state label and preserves its editor when connected', async (
       return found.portId;
     };
     return {
+      replacementNodeId: operators[2]!.nodeId,
+      replacementPortId: port(operators[2]!, 'output'),
       sourceNodeId: operators[0]!.nodeId,
       sourcePortId: port(operators[0]!, 'output'),
       targetNodeId: operators[1]!.nodeId,
@@ -959,6 +965,23 @@ test('keeps one RW state label and preserves its editor when connected', async (
   await expect(editor).toHaveAttribute('readonly', '');
   expect(await editor.evaluate((element, before) => element === before, editorElement)).toBe(true);
   await expect(targetRow.getByText('low_cutoff', { exact: true })).toHaveCount(1);
+  await expect(page.locator('.graph-edge-state .react-flow__edge-path')).toHaveCSS('stroke-dasharray', 'none');
+  const replacementHandle = page.locator(`[data-nodeid="${statePorts.replacementNodeId}"][data-handleid="${statePorts.replacementPortId}"]`);
+  const occupiedInput = page.locator(`[data-nodeid="${statePorts.targetNodeId}"][data-handleid="${statePorts.targetPortId}"]`);
+  const sourceBounds = await replacementHandle.boundingBox();
+  const targetBounds = await occupiedInput.boundingBox();
+  if (sourceBounds === null || targetBounds === null) throw new Error('Missing replacement connection handles');
+  await page.mouse.move(sourceBounds.x + sourceBounds.width / 2, sourceBounds.y + sourceBounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(targetBounds.x + targetBounds.width / 2, targetBounds.y + targetBounds.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.react-flow__edge.graph-edge-state')).toHaveCount(1);
+  await expect.poll(async () => page.evaluate(async ({ projectId, targetNodeId }) => {
+    const response = await fetch(`/api/projects/${projectId}`);
+    const record = await response.json() as { document: { edges: { fromNodeId: string; toNodeId: string }[] } };
+    return record.document.edges.find((edge) => edge.toNodeId === targetNodeId)?.fromNodeId;
+  }, { projectId, targetNodeId: statePorts.targetNodeId })).toBe(statePorts.replacementNodeId);
+  await expect(editor).toHaveAttribute('readonly', '');
   await page.screenshot({ path: testInfo.outputPath('connected-state-editor.png'), fullPage: true });
   expect(pageErrors).toEqual([]);
 });

@@ -25,6 +25,31 @@ vi.mock('./useRuntimeNodeState', () => ({
 
 afterEach(cleanup);
 
+test('renders patch hub terminals without state widgets or runtime values', () => {
+  const state: StateSpec = { name: 'port', access: 'rw', showOnNode: true, valueSchema: { type: 'any' } };
+  const node: OperatorNode = {
+    kind: 'operator', nodeId: 'hub', name: 'Patch Hub', serviceId: 'studio', serviceClass: 'f8.pystudio',
+    operatorClass: 'f8.patch_hub', enabled: true, portIds: {}, stateValues: { port: null },
+    spec: { specKind: 'operator', serviceClass: 'f8.pystudio', operatorClass: 'f8.patch_hub', label: 'Patch Hub', stateFields: [state] },
+    ports: [
+      { portId: 'hub-in', name: 'port', runtimeName: 'port', kind: 'state', direction: 'input', stateSpec: state, dataSpec: null },
+      { portId: 'hub-out', name: 'port', runtimeName: 'port', kind: 'state', direction: 'output', stateSpec: state, dataSpec: null },
+    ],
+  };
+  const props = { id: 'hub', data: { graphNode: node, childCount: 0 }, selected: true } as NodeProps<StudioFlowNode>;
+  const { container } = render(<ReactFlowProvider>
+    <GraphNodeInteractionContext.Provider value={{ busy: false, pendingCommands: new Set(), connectedStateInputs: new Set(), resizeService: vi.fn(), setState: vi.fn(), openCommand: vi.fn(), showOutput: vi.fn() }}>
+      <StudioNodeView {...props} />
+    </GraphNodeInteractionContext.Provider>
+  </ReactFlowProvider>);
+  expect(screen.getByText('port')).toBeInTheDocument();
+  expect(screen.queryByText('null')).not.toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(container.querySelector('[data-handleid="hub-in"]')).toBeInTheDocument();
+  expect(container.querySelector('[data-handleid="hub-out"]')).toBeInTheDocument();
+  expect(container.querySelector('.port-control')).not.toBeInTheDocument();
+});
+
 test('shows wave data in the node and holds the last frame when UI updates are paused', () => {
   const node: OperatorNode = {
     kind: 'operator', nodeId: 'wave', name: 'Wave Viz', serviceId: 'studio', serviceClass: 'f8.pystudio',

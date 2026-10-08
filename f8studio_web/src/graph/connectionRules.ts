@@ -1,4 +1,4 @@
-import type { GraphEdgeKind, GraphPort, StudioDocument } from '../api/contracts';
+import type { GraphEdge, GraphEdgeKind, GraphOperation, GraphPort, StudioDocument } from '../api/contracts';
 
 export interface GraphConnection {
   readonly source: string | null;
@@ -11,6 +11,15 @@ export function edgeKindForPort(port: GraphPort): GraphEdgeKind {
   if (port.kind === 'data') return 'data';
   if (port.kind === 'exec') return 'exec';
   return 'state';
+}
+
+/** Replace the occupied input and add its new connection in one graph transaction. */
+export function inputConnectionOperations(document: StudioDocument, edge: GraphEdge): GraphOperation[] {
+  return [
+    ...document.edges.filter((existing) => existing.toNodeId === edge.toNodeId && existing.toPortId === edge.toPortId)
+      .map((existing): GraphOperation => ({ op: 'disconnectEdge', edgeId: existing.edgeId })),
+    { op: 'connectEdge', edge },
+  ];
 }
 
 function dataPayloadKind(port: GraphPort): string {
@@ -85,9 +94,8 @@ export function connectionError(document: StudioDocument, connection: GraphConne
     edge.toNodeId === targetNode.nodeId && edge.toPortId === targetPort.portId)) {
     return 'These ports are already connected.';
   }
-  if (document.edges.some((edge) => edge.toNodeId === targetNode.nodeId && edge.toPortId === targetPort.portId)) {
-    return `${targetNode.name}.${targetPort.name} already has an upstream connection.`;
-  }
+  // Validate the graph that will exist after replacing the occupied input.
+  const remainingEdges = document.edges.filter((edge) => edge.toNodeId !== targetNode.nodeId || edge.toPortId !== targetPort.portId);
   if (kind === 'data') {
     if (dataPayloadKind(sourcePort) !== dataPayloadKind(targetPort)) {
       return `Data payload mismatch: ${dataPayloadKind(sourcePort)} cannot connect to ${dataPayloadKind(targetPort)}.`;
@@ -99,14 +107,14 @@ export function connectionError(document: StudioDocument, connection: GraphConne
       return 'Exec connections require operator endpoints.';
     }
     if (sourceNode.serviceId !== targetNode.serviceId) return 'Exec connections cannot cross service boundaries.';
-    if (document.edges.some((edge) => edge.fromNodeId === sourceNode.nodeId && edge.fromPortId === sourcePort.portId)) {
+    if (remainingEdges.some((edge) => edge.fromNodeId === sourceNode.nodeId && edge.fromPortId === sourcePort.portId)) {
       return `${sourceNode.name}.${sourcePort.name} already has a downstream exec connection.`;
     }
     return null;
   }
   if (sourcePort.stateSpec?.access === 'wo') return `${sourceNode.name}.${sourcePort.name} is write-only.`;
   if (targetPort.stateSpec?.access === 'ro') return `${targetNode.name}.${targetPort.name} is read-only.`;
-  if (createsStateCycle(document, sourceNode.nodeId, sourcePort, targetNode.nodeId, targetPort)) {
+  if (createsStateCycle({ ...document, edges: remainingEdges }, sourceNode.nodeId, sourcePort, targetNode.nodeId, targetPort)) {
     return 'This state connection would create a cycle.';
   }
   return null;

@@ -1,12 +1,14 @@
 import { MarkerType, type Edge, type Node, type XYPosition } from '@xyflow/react';
 
 import type { GraphNode, GraphOperation, NodeLayout, StudioDocument } from '../api/contracts';
-import { nodePortRows } from './portRows';
+import { isPatchHub, nodePortRows } from './portRows';
 
 export const SERVICE_WIDTH = 524;
 export const SERVICE_MIN_HEIGHT = 240;
 export const COMPACT_SERVICE_WIDTH = 280;
 export const OPERATOR_WIDTH = 240;
+export const PATCH_HUB_WIDTH = 112;
+export const PATCH_HUB_CHROME = 28;
 export const OPERATOR_MIN_HEIGHT = 64;
 export const VIDEO_PREVIEW_HEIGHT = 135;
 export const PORT_ROW_HEIGHT = 24;
@@ -104,6 +106,7 @@ export function reconcileProjectedEdges(current: Edge[], projected: readonly Edg
 }
 
 export function operatorHeight(node: GraphNode): number {
+  if (isPatchHub(node)) return PATCH_HUB_CHROME + Math.max(1, nodePortRows(node).length) * PORT_ROW_HEIGHT;
   const previewHeight = node.kind === 'operator' &&
     (node.operatorClass === 'f8.viz.video' || node.spec.rendererClass === 'viz_video' ||
       node.operatorClass === 'f8.viz.audio' || node.spec.rendererClass === 'viz_audio' ||
@@ -118,6 +121,10 @@ export function operatorHeight(node: GraphNode): number {
     OPERATOR_MIN_HEIGHT,
     NODE_VERTICAL_CHROME + Math.max(1, nodePortRows(node).length) * PORT_ROW_HEIGHT + previewHeight,
   );
+}
+
+export function operatorWidth(node: GraphNode): number {
+  return isPatchHub(node) ? PATCH_HUB_WIDTH : OPERATOR_WIDTH;
 }
 
 export function compactServiceHeight(node: GraphNode): number {
@@ -173,9 +180,10 @@ export function constrainOperatorPosition(
   height: number,
   childHeight = OPERATOR_MIN_HEIGHT,
   topInset = CONTAINER_INSET_Y,
+  childWidth = OPERATOR_WIDTH,
 ): XYPosition {
   return {
-    x: Math.max(CONTAINER_INSET_X, Math.min(position.x, width - OPERATOR_WIDTH - CONTAINER_INSET_X)),
+    x: Math.max(CONTAINER_INSET_X, Math.min(position.x, width - childWidth - CONTAINER_INSET_X)),
     y: Math.max(topInset, Math.min(position.y, height - childHeight - CONTAINER_BOTTOM_INSET)),
   };
 }
@@ -246,7 +254,7 @@ export function projectDocument(document: StudioDocument): {
         type: 'studio',
         className: 'flow-node-operator',
         dragHandle: '.node-drag-handle',
-        style: { width: OPERATOR_WIDTH, height: operatorHeight(operator) },
+        style: { width: operatorWidth(operator), height: operatorHeight(operator) },
         position: absolute,
         data: { graphNode: operator, childCount: 0 },
         zIndex: 1,
@@ -260,13 +268,14 @@ export function projectDocument(document: StudioDocument): {
       className: 'flow-node-operator',
       dragHandle: '.node-drag-handle',
       parentId: parent.id,
-      style: { width: OPERATOR_WIDTH, height: operatorHeight(operator) },
+      style: { width: operatorWidth(operator), height: operatorHeight(operator) },
       position: constrainOperatorPosition(
         { x: absolute.x - parent.position.x, y: absolute.y - parent.position.y },
         width,
         height,
         operatorHeight(operator),
         serviceChildInsetY(parent.data.graphNode),
+        operatorWidth(operator),
       ),
       data: { graphNode: operator, childCount: 0 },
       zIndex: 1,

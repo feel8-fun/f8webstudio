@@ -10,7 +10,7 @@ import { PresentationWave } from '../presentation/PresentationWave';
 import { PresentationTrack } from '../presentation/PresentationTrack';
 import { hasExtensionNodeRendererClass } from '../extensions/registry';
 import { SkeletonOutputPreview } from '../three/SkeletonOutputPreview';
-import { nodePortRows } from './portRows';
+import { isPatchHub, nodePortRows } from './portRows';
 import { PORT_ROW_HEIGHT, SERVICE_MIN_HEIGHT, SERVICE_WIDTH, type StudioFlowNode } from './projection';
 import { StateFieldControl, stateOptionPoolField } from './StateFieldControl';
 import { useRuntimeNodeState } from './useRuntimeNodeState';
@@ -81,6 +81,26 @@ function InlineDataPreview({ nodeId, enabled, updating, renderer }: {
   </div>;
 }
 
+function PatchHubNodeView({ node, selected }: { readonly node: GraphNode; readonly selected: boolean }) {
+  const rows = nodePortRows(node);
+  return <article className={`studio-node studio-node-operator studio-node-patch-hub ${selected ? 'studio-node-selected' : ''}`} aria-label={node.name}>
+    <header className="node-drag-handle" title={node.name}><strong>{node.name}</strong></header>
+    <div className="node-ports">
+      {rows.map((row) => <div className="patch-hub-port-row" key={row.key}>
+        <div className={`port-label port-${row.input?.kind ?? 'empty'}`}>
+          {row.input && <Handle id={row.input.portId} type="target" position={Position.Left} className={`port-handle port-handle-${row.input.kind}`} />}
+        </div>
+        <span className={`patch-hub-port-name port-${row.input?.kind ?? row.output?.kind ?? 'empty'}`} title={`${row.input?.kind ?? row.output?.kind}: ${row.input?.name ?? row.output?.name}`}>
+          {row.input?.name ?? row.output?.name}
+        </span>
+        <div className={`port-label port-output port-${row.output?.kind ?? 'empty'}`}>
+          {row.output && <Handle id={row.output.portId} type="source" position={Position.Right} className={`port-handle port-handle-${row.output.kind}`} />}
+        </div>
+      </div>)}
+    </div>
+  </article>;
+}
+
 export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
   const node = data.graphNode;
   const execLabel = (runtimeName: string, direction: 'input' | 'output'): string | undefined => {
@@ -105,10 +125,11 @@ export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
     (BUILTIN_OUTPUT_CLASSES.has(node.operatorClass) || BUILTIN_RENDERER_CLASSES.has(rendererClass) || hasExtensionNodeRendererClass(rendererClass));
   const isThreeD = node.kind === 'operator' && (node.operatorClass === 'f8.viz.three_d' || node.spec.rendererClass === 'viz_three_d');
   const interaction = useContext(GraphNodeInteractionContext);
-  const inlineNames = (node.spec.stateFields ?? []).filter((field) => field.showOnNode === true ||
+  const inlineNames = (isPatchHub(node) ? [] : node.spec.stateFields ?? []).filter((field) => field.showOnNode === true ||
     ((showsWavePreview || showsTextPreview) && field.name === 'uiUpdate'))
     .flatMap((field) => [field.name, stateOptionPoolField(field)].filter((name): name is string => name !== null));
   const runtimeValues = useRuntimeNodeState(node, inlineNames);
+  if (isPatchHub(node)) return <PatchHubNodeView node={node} selected={selected} />;
   const updatesEnabled = runtimeValues.uiUpdate?.found === true
     ? runtimeValues.uiUpdate.value !== false : node.stateValues.uiUpdate !== false;
   const rows = nodePortRows(node);

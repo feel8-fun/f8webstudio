@@ -6,6 +6,10 @@ export interface PortRow {
   readonly output?: GraphPort;
 }
 
+export function isPatchHub(node: GraphNode): boolean {
+  return node.kind === 'operator' && (node.operatorClass === 'f8.patch_hub' || node.spec.rendererClass === 'patch_hub');
+}
+
 export function visibleNodePorts(node: GraphNode): readonly GraphPort[] {
   return node.ports.filter((port) => {
     if (port.kind === 'exec' || port.kind === 'command') return true;

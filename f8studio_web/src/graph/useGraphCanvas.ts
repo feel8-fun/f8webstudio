@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, createCatalogNode } from '../api/client';
 
 import type { GraphEdge, GraphNode, GraphOperation, JsonValue, NodeLayout, OperatorSpec, ProjectRecord, ServiceSpec } from '../api/contracts';
-import { connectionError, edgeKindForPort } from './connectionRules';
-import { absoluteFlowPosition, COMPACT_SERVICE_WIDTH, compactServiceHeight, constrainOperatorPosition, duplicateFragment, OPERATOR_MIN_HEIGHT, OPERATOR_WIDTH, operatorHeight, projectDocument, reconcileProjectedEdges, reconcileProjectedNodes, SERVICE_MIN_HEIGHT, SERVICE_WIDTH, serviceChildInsetY, STUDIO_SERVICE_CLASS, type StudioFlowNode } from './projection';
+import { connectionError, edgeKindForPort, inputConnectionOperations } from './connectionRules';
+import { absoluteFlowPosition, COMPACT_SERVICE_WIDTH, compactServiceHeight, constrainOperatorPosition, duplicateFragment, OPERATOR_MIN_HEIGHT, OPERATOR_WIDTH, operatorHeight, operatorWidth, projectDocument, reconcileProjectedEdges, reconcileProjectedNodes, SERVICE_MIN_HEIGHT, SERVICE_WIDTH, serviceChildInsetY, STUDIO_SERVICE_CLASS, type StudioFlowNode } from './projection';
 
 import { errorMessage, newId } from './workspaceUtils';
 const STUDIO_SERVICE_ID = 'studio';
@@ -145,6 +145,7 @@ export function useGraphCanvas({ project, busy, setBusy, setError, commit, reloa
       height,
       operatorHeight(operator.data.graphNode),
       serviceChildInsetY(service.data.graphNode),
+      operatorWidth(operator.data.graphNode),
     );
     const position = relative === null ? operator.position : {
       x: service.position.x + relative.x,
@@ -299,7 +300,7 @@ export function useGraphCanvas({ project, busy, setBusy, setError, commit, reloa
       queueSize: 16,
       timeoutMs: null,
     };
-    void commit([{ op: 'connectEdge', edge }]);
+    void commit(inputConnectionOperations(project.document, edge));
   }, [commit, project, restoreProjection]);
 
   const isValidConnection = useCallback((connection: Connection | Edge) => {

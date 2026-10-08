@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 
 import type { GraphNode, GraphPort, StudioDocument } from '../api/contracts';
-import { connectionError } from './connectionRules';
+import { connectionError, inputConnectionOperations } from './connectionRules';
 
 function port(
   portId: string,
@@ -44,7 +44,7 @@ function document(nodes: readonly GraphNode[]): StudioDocument {
   };
 }
 
-test('accepts compatible data connections and rejects occupied inputs', () => {
+test('accepts compatible data connections and rejects duplicate connections', () => {
   const source = operator('source', 'service', [port('out', 'data', 'output')]);
   const sink = operator('sink', 'service', [port('in', 'data', 'input')]);
   const base = document([source, sink]);
@@ -58,6 +58,43 @@ test('accepts compatible data connections and rejects occupied inputs', () => {
       kind: 'data', strategy: 'latest', queueSize: 16, timeoutMs: null,
     }],
   }, connection)).toContain('already connected');
+});
+
+test.each(['data', 'state', 'exec'] as const)('replaces an occupied %s input in one transaction', (kind) => {
+  const source = operator('source', 'service', [port('out', kind, 'output')]);
+  const oldSource = operator('old-source', 'service', [port('out', kind, 'output')]);
+  const sink = operator('sink', 'service', [port('in', kind, 'input')]);
+  const edge = { edgeId: 'old', fromNodeId: 'old-source', fromPortId: 'out', toNodeId: 'sink', toPortId: 'in', kind, strategy: 'latest' as const, queueSize: 16, timeoutMs: null };
+  const base = { ...document([source, oldSource, sink]), edges: [edge] };
+  const connection = { source: 'source', sourceHandle: 'out', target: 'sink', targetHandle: 'in' };
+  expect(connectionError(base, connection)).toBeNull();
+  const replacement = { ...edge, edgeId: 'new', fromNodeId: 'source' };
+  expect(inputConnectionOperations(base, replacement)).toEqual([
+    { op: 'disconnectEdge', edgeId: 'old' }, { op: 'connectEdge', edge: replacement },
+  ]);
+  expect(base.edges).toEqual([edge]);
+});
+
+test('rejects an incompatible replacement without changing the occupied input', () => {
+  const dataSource = operator('data', 'service', [port('out', 'data', 'output')]);
+  const stateSource = operator('state', 'service', [port('out', 'state', 'output')]);
+  const sink = operator('sink', 'service', [port('in', 'state', 'input')]);
+  const edge = { edgeId: 'old', fromNodeId: 'state', fromPortId: 'out', toNodeId: 'sink', toPortId: 'in', kind: 'state' as const, strategy: 'latest' as const, queueSize: 16, timeoutMs: null };
+  const base = { ...document([dataSource, stateSource, sink]), edges: [edge] };
+  expect(connectionError(base, { source: 'data', sourceHandle: 'out', target: 'sink', targetHandle: 'in' })).toContain('compatible port types');
+  expect(base.edges).toEqual([edge]);
+});
+
+test('still rejects cycles when replacing an occupied state input', () => {
+  const ports = () => [
+    { ...port('out', 'state', 'output'), runtimeName: 'value' },
+    { ...port('in', 'state', 'input'), runtimeName: 'value' },
+  ];
+  const base: StudioDocument = { ...document(['first', 'second', 'third'].map((id) => operator(id, 'service', ports()))), edges: [
+    { edgeId: 'old', fromNodeId: 'first', fromPortId: 'out', toNodeId: 'second', toPortId: 'in', kind: 'state', strategy: 'latest', queueSize: 16, timeoutMs: null },
+    { edgeId: 'downstream', fromNodeId: 'second', fromPortId: 'out', toNodeId: 'third', toPortId: 'in', kind: 'state', strategy: 'latest', queueSize: 16, timeoutMs: null },
+  ] };
+  expect(connectionError(base, { source: 'third', sourceHandle: 'out', target: 'second', targetHandle: 'in' })).toContain('create a cycle');
 });
 
 test('enforces exec service ownership and state access/cycle rules', () => {

@@ -8,6 +8,7 @@ import {
   compactServiceHeight,
   duplicateFragment,
   operatorHeight,
+  PATCH_HUB_WIDTH,
   projectDocument,
   reconcileProjectedEdges,
   reconcileProjectedNodes,
@@ -321,4 +322,12 @@ test('service resizing keeps child layout within the new service bounds', () => 
   expect(child.layout.x + 240).toBeLessThanOrEqual(724);
   expect(child.layout.y).toBeGreaterThanOrEqual(300);
   expect(child.layout.y + 64).toBeLessThanOrEqual(600);
+});
+
+test('projects existing patch hubs as narrow wiring nodes', () => {
+  const source = document.nodes.find((node) => node.kind === 'operator');
+  if (source === undefined || source.kind !== 'operator') throw new Error('Missing operator fixture');
+  const hub = { ...source, operatorClass: 'f8.patch_hub', name: 'Patch Hub' };
+  const projected = projectDocument({ ...document, nodes: document.nodes.map((node) => node.nodeId === hub.nodeId ? hub : node) });
+  expect(projected.nodes.find((node) => node.id === hub.nodeId)?.style).toEqual({ width: PATCH_HUB_WIDTH, height: 52 });
 });

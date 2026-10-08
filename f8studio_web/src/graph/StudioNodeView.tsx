@@ -86,7 +86,7 @@ function PatchHubNodeView({ node, selected }: { readonly node: GraphNode; readon
   return <article className={`studio-node studio-node-operator studio-node-patch-hub ${selected ? 'studio-node-selected' : ''}`} aria-label={node.name}>
     <header className="node-drag-handle" title={node.name}><strong>{node.name}</strong></header>
     <div className="node-ports">
-      {rows.map((row) => <div className="patch-hub-port-row" key={row.key}>
+      {rows.map((row) => <div className="patch-hub-port-row" key={row.key} data-port-node={node.nodeId} data-port-id={row.input?.portId ?? row.output?.portId}>
         <div className={`port-label port-${row.input?.kind ?? 'empty'}`}>
           {row.input && <Handle id={row.input.portId} type="target" position={Position.Left} className={`port-handle port-handle-${row.input.kind}`} />}
         </div>

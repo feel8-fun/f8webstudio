@@ -1071,3 +1071,43 @@ test('builds, deploys, observes, modifies, and restores a built-in Studio graph'
   await page.screenshot({ path: testInfo.outputPath('studio-runtime-workflow.png'), fullPage: true });
   expect(pageErrors).toEqual([]);
 });
+
+test('adds nodes with Tab search and copies a port type into Patch Hub', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard and right mouse button workflow');
+  await page.goto('/');
+  await expect(page.locator('.connection-online')).toBeVisible();
+  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+  await expect(page.locator('.save-state')).toHaveText('Saved');
+  const addQuick = async (query: string, label: RegExp) => {
+    await page.locator('.react-flow__pane').click({ position: { x: 20, y: 20 } });
+    await page.keyboard.press('Tab');
+    const dialog = page.getByRole('dialog', { name: 'Quick node search' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox').fill(query);
+    await dialog.getByRole('option', { name: label }).filter({ hasNotText: 'Requires' }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.save-state')).toHaveText('Saved');
+  };
+  await addQuick('f8.pyengine', /PyEngine f8.pyengine/);
+  await addQuick('udp in', /UDP In/);
+  await addQuick('patch hub', /Patch Hub/);
+  await page.locator('.react-flow__controls-fitview').click();
+  const udp = page.locator('.flow-node-operator').filter({ hasText: 'UDP In' });
+  const port = udp.locator('.port-label').filter({ hasText: /^port$/ }).first();
+  await port.click({ button: 'right', force: true });
+  await page.getByRole('menuitem', { name: 'View port definition / schema' }).click();
+  await expect(page.getByRole('region', { name: 'Port definition' })).toContainText('65535');
+  await page.getByRole('menuitem', { name: 'Copy data type' }).click();
+  const hub = page.locator('.studio-node-patch-hub');
+  await hub.locator('.patch-hub-port-row').filter({ hasText: /^state$/ }).click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Paste data type' })).toBeEnabled();
+  await page.getByRole('menuitem', { name: 'Paste data type' }).click();
+  await expect(page.locator('.save-state')).toHaveText('Saved');
+  await hub.locator('.patch-hub-port-row').filter({ hasText: /^state$/ }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'View port definition / schema' }).click();
+  await expect(page.getByRole('region', { name: 'Port definition' })).toContainText('integer');
+  await expect(page.getByRole('region', { name: 'Port definition' })).toContainText('65535');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: 'Port actions' })).toHaveCount(0);
+  await expect(hub.locator('input, textarea, select')).toHaveCount(0);
+});

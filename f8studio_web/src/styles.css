@@ -1211,3 +1211,18 @@ button:disabled { cursor: default; }
 .studio-node-patch-hub header strong { font-size: 9px; }
 .patch-hub-port-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) 8px; align-items: center; height: 24px; }
 .patch-hub-port-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 9px; color: #aab1ba; }
+
+.graph-popup-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; justify-content: center; align-items: flex-start; padding-top: 15vh; background: #0006; }
+.node-quick-search { width: min(560px, calc(100vw - 32px)); padding: 14px; border: 1px solid #52606d; border-radius: 8px; background: #191e25; box-shadow: 0 12px 40px #0008; }
+.node-quick-search > input { width: 100%; margin: 12px 0; }
+.node-quick-search small { color: #94a2b3; font-size: 11px; }
+.quick-node-results { max-height: 45vh; overflow: auto; }
+.quick-node-results button { display: grid; width: 100%; padding: 9px 12px; text-align: left; border: 0; color: #d5dce3; background: transparent; cursor: pointer; }
+.quick-node-results button[aria-selected=true] { background: #2d4255; }
+.quick-node-results button[aria-disabled=true] { opacity: .5; }
+.port-context-popup { position: fixed; z-index: 130; min-width: 240px; max-width: min(450px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 10px; border: 1px solid #52606d; border-radius: 6px; background: #191e25; box-shadow: 0 8px 28px #0009; font-size: 12px; }
+.port-context-popup [role=menu] { display: grid; margin-top: 8px; }
+.port-context-popup button { padding: 8px; text-align: left; border: 0; background: transparent; color: #c6d0dc; cursor: pointer; }
+.port-context-popup button:hover, .port-context-popup button:focus-visible { background: #2d4255; }
+.port-context-popup button:disabled { opacity: .4; cursor: default; }
+.port-context-popup pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }

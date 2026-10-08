@@ -5,7 +5,7 @@ import { useGraphCommands } from './useGraphCommands';
 import { useProjectDeployment } from './useProjectDeployment';
 import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type Edge } from '@xyflow/react';
 import { Bot, Copy, Download, Play, Plus, Redo2, RotateCcw, Square, Trash2, Upload, X } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { useLivePrefix } from '../api/liveStore';
 import type { RuntimeMonitor } from '../api/contracts';
@@ -16,6 +16,9 @@ import { GraphNodeInteractionContext, StudioNodeView } from './StudioNodeView';
 import { CommandDialog } from './CommandDialog';
 
 import { NodeCatalog } from './NodeCatalog';
+import { NodeQuickSearch } from './NodeQuickSearch';
+import { PortContextMenu, type PortMenuTarget } from './PortContextMenu';
+import { canPastePortType, pastePortTypeOperation, type CopiedPortType } from './portType';
 
 const nodeTypes = { studio: StudioNodeView };
 const INSPECTOR_WIDTH_KEY = 'f8studio.graphInspectorWidth';
@@ -30,6 +33,10 @@ function savedInspectorWidth(): number {
 }
 
 function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId: string) => void }) {
+  const [quickSearch, setQuickSearch] = useState(false);
+  const [portMenu, setPortMenu] = useState<PortMenuTarget | null>(null);
+  const [copiedType, setCopiedType] = useState<CopiedPortType | null>(null);
+  const closePortMenu = useCallback(() => setPortMenu(null), []);
   const [inspectorWidth, setInspectorWidth] = useState(savedInspectorWidth);
   const inspectorWidthRef = useRef(inspectorWidth);
   const inspectorResizingRef = useRef(false);
@@ -86,6 +93,18 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   const selectedMonitor = selectedNode === null ? null : monitors.find((monitor) => monitor.nodeId === selectedNode.nodeId) ??
     (selectedNode.kind === 'service' ? monitors.find((monitor) => monitor.serviceId === selectedNode.serviceId) ?? null : null);
   const locked = busy || saving;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || quickSearch || portMenu || activeCommand || locked || !project) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && (active.matches('input, textarea, select, button, [contenteditable="true"], [role="separator"]') || active.closest('[role="dialog"]'))) return;
+      event.preventDefault();
+      setQuickSearch(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [quickSearch, portMenu, activeCommand, locked, project]);
+  useEffect(() => { setQuickSearch(false); setPortMenu(null); }, [selectedProjectId]);
 
   const resizeInspector = (clientX: number): void => {
     const bounds = graphWorkspaceRef.current?.getBoundingClientRect();
@@ -120,8 +139,19 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           onAdd={(spec) => void addSpec(spec)} onRefresh={() => void refreshNodeCatalog()} />
       </aside>
 
-      <section className="graph-canvas" aria-label="Graph canvas" ref={graphCanvasRef}>
+      <section className="graph-canvas" aria-label="Graph canvas" ref={graphCanvasRef} onContextMenu={(event) => {
+        if (!(event.target instanceof Element) || !project) return;
+        const handle = event.target.closest('.port-label')?.querySelector<HTMLElement>('.port-handle') ?? event.target.closest<HTMLElement>('.port-handle');
+        const terminal = event.target.closest<HTMLElement>('[data-port-node]');
+        const node = project.document.nodes.find((item) => item.nodeId === (handle?.dataset.nodeid ?? terminal?.dataset.portNode));
+        const port = node?.ports.find((item) => item.portId === (handle?.dataset.handleid ?? terminal?.dataset.portId));
+        if (!node || !port) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setPortMenu({ node, port, x: event.clientX, y: event.clientY });
+      }}>
         <div className="graph-toolbar">
+          <button type="button" title="Quick node search (Tab)" aria-label="Quick node search" disabled={locked || !project} onClick={() => setQuickSearch(true)}><Plus size={16} /></button>
           <button type="button" title="Open Agent window" aria-label="Open Agent window" disabled={project === null} onClick={openAgent}><Bot size={16} /></button>
           <button type="button" title="Undo" aria-label="Undo" disabled={busy || project === null} onClick={() => void history('undo')}><RotateCcw size={16} /></button>
           <button type="button" title="Redo" aria-label="Redo" disabled={busy || project === null} onClick={() => void history('redo')}><Redo2 size={16} /></button>
@@ -220,6 +250,19 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
         {deployment !== null && deployment.serviceResults.some((result) => !result.success) && <div className="deploy-errors">{deployment.serviceResults.filter((result) => !result.success).map((result) => <p key={result.serviceId}><strong>{result.serviceId}</strong>{result.errorMessage}</p>)}</div>}
       </aside>
       {activeCommand !== null && <CommandDialog key={`${activeCommand.node.nodeId}:${activeCommand.command.name}`} node={activeCommand.node} command={activeCommand.command} onClose={resetCommand} onResult={reportCommand} />}
+      {quickSearch && <NodeQuickSearch catalog={catalog} services={new Set(project?.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))} onAdd={(spec) => void addSpec(spec)} onClose={() => setQuickSearch(false)} />}
+      {portMenu && <PortContextMenu target={portMenu} copied={copiedType} busy={locked} onClose={closePortMenu} onCopy={(value) => { setCopiedType(value); closePortMenu(); }} onPaste={() => {
+        if (!copiedType || !project) return;
+        const node = project.document.nodes.find((item) => item.nodeId === portMenu.node.nodeId);
+        const port = node?.ports.find((item) => item.portId === portMenu.port.portId);
+        if (node && port && canPastePortType(node, port, copiedType)) {
+          void commit([pastePortTypeOperation(node, port, copiedType)]).catch((reason: unknown) => {
+            console.error('Failed to paste port data type', reason);
+            setError(reason instanceof Error ? reason.message : 'Failed to paste port data type');
+          });
+        }
+        closePortMenu();
+      }} />}
       {commandToast !== null && <div className={`command-toast command-toast-${commandToast.kind}`} role={commandToast.kind === 'error' ? 'alert' : 'status'}>
         <div><strong>{commandToast.title}</strong><button type="button" className="icon-button" title="Dismiss" aria-label="Dismiss command result" onClick={() => setCommandToast(null)}><X size={14} /></button></div>
         <p>{commandToast.detail}</p>

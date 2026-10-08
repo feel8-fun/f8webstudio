@@ -1009,13 +1009,14 @@ button:disabled { cursor: default; }
 .agent-title-edit { display: flex; flex: 1; min-width: 0; gap: 4px; align-items: center; }
 .agent-title-edit input { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border: 1px solid #628ca6; border-radius: 4px; background: #101318; color: #e6eaee; font: inherit; }
 .agent-model-label { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.agent-active-model { display: flex; flex: 0 1 380px; gap: 4px; min-width: 0; max-width: 380px; }
-.agent-active-model select { min-width: 0; max-width: 150px; height: 27px; border: 1px solid #3a4048; border-radius: 4px; color: #c5ced7; background: #101318; font-size: 11px; }
+.agent-active-model { display: flex; align-items: center; flex: 0 1 400px; gap: 6px; min-width: 0; max-width: 400px; padding: 3px; border: 1px solid #343b44; border-radius: 8px; background: #14181d; }
+.agent-active-model select { min-width: 0; max-width: 150px; height: 28px; padding: 0 7px; border: 0; border-radius: 5px; color: #c5ced7; background: #14181d; font-size: 11px; cursor: pointer; }
+.agent-active-model select:hover { background: #222830; }
+.agent-active-model select:focus-visible, .agent-active-model input:focus-visible { outline: 1px solid #628ca6; outline-offset: -1px; }
 .agent-active-model > select { flex: 0 1 150px; }
-.agent-active-model input { min-width: 0; width: 120px; height: 27px; padding: 0 6px; border: 1px solid #3a4048; border-radius: 4px; color: #c5ced7; background: #101318; font-size: 11px; }
-.agent-active-model .agent-model-picker { flex: 1; min-width: 90px; }
+.agent-active-model input { min-width: 0; width: 120px; height: 28px; padding: 0 7px; border: 0; border-radius: 5px; color: #c5ced7; background: #101318; font-size: 11px; }
+.agent-active-model .agent-model-picker { flex: 1; min-width: 90px; padding-left: 6px; border-left: 1px solid #343b44; }
 .agent-active-model .agent-model-picker select, .agent-active-model .agent-model-picker input { width: 100%; max-width: none; box-sizing: border-box; }
-.agent-active-model .icon-button { flex: none; width: 27px; height: 27px; }
 .agent-fixed-model { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-status { color: #b4bdc7; text-transform: capitalize; }
 .agent-status.status-succeeded { color: #62cb93; }
@@ -1075,10 +1076,13 @@ button:disabled { cursor: default; }
 .agent-delete-dialog p { color: #aeb7c1; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .agent-delete-dialog > div { display: flex; justify-content: end; gap: 8px; }
 .agent-delete-dialog .danger { color: #f3d4d4; border-color: #924e4e; background: #693232; }
-.agent-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 10px 12px; border-top: 1px solid #292e34; background: #171a1f; }
-.agent-compose textarea { min-width: 0; resize: vertical; max-height: 220px; border: 1px solid #3a4048; border-radius: 6px; padding: 10px; color: #e6eaee; background: #101318; font-family: inherit; font-size: 13px; line-height: 1.5; }
-.agent-compose textarea:focus-visible { outline: 2px solid #628ca6; outline-offset: 1px; }
-.agent-compose-actions { display: flex; align-items: end; gap: 5px; }
+.agent-compose { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 10px 12px; border-top: 1px solid #292e34; background: #171a1f; }
+.agent-compose-input { display: flex; flex-direction: column; min-width: 0; border: 1px solid #3a4048; border-radius: 8px; background: #101318; }
+.agent-compose-input:focus-within { border-color: #628ca6; box-shadow: 0 0 0 1px #628ca6; }
+.agent-compose textarea { display: block; width: 100%; min-width: 0; min-height: 64px; resize: vertical; max-height: 220px; box-sizing: border-box; border: 0; border-radius: 8px 8px 0 0; padding: 10px 12px; color: #e6eaee; background: transparent; font-family: inherit; font-size: 13px; line-height: 1.5; }
+.agent-compose textarea:focus-visible { outline: none; }
+.agent-compose-actions { display: flex; align-items: center; gap: 8px; padding: 4px 8px 8px; }
+.agent-compose-actions > .primary { margin-left: auto; min-height: 32px; }
 .agent-compose-actions .icon-button { width: 32px; height: 32px; }
 .agent-effort-control { display: inline-flex; align-items: center; gap: 4px; height: 32px; color: #9bb1bf; }
 .agent-effort-control select { width: 78px; height: 30px; min-width: 0; padding: 0 4px; border: 1px solid #3a4048; border-radius: 4px; color: #dce1e7; background: #101318; font-size: 11px; }
@@ -1104,7 +1108,6 @@ button:disabled { cursor: default; }
   .agent-approval-actions small { flex-basis: 100%; }
   .agent-approval-actions .command-button { flex: 1; min-width: 0; }
   .agent-message { grid-template-columns: 1fr; gap: 4px; }
-  .agent-compose { grid-template-columns: 1fr; }
   .agent-run-header { flex-wrap: wrap; }
   .agent-active-model { order: 10; flex: 1 1 100%; max-width: none; }
   .agent-active-model > select { max-width: 40%; }

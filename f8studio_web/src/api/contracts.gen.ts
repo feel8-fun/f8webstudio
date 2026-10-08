@@ -575,8 +575,8 @@ export type CreateAgentSessionRequest = {
 export type CreateAgentSessionRequestInput = {
   readonly "projectId": string;
   readonly "title"?: string;
-  readonly "providerId"?: string;
-  readonly "modelId"?: string;
+  readonly "providerId": string;
+  readonly "modelId": string;
 };
 
 export type CreateAssetRequest = {

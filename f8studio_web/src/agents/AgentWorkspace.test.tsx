@@ -222,7 +222,7 @@ test('switches the model on an existing session and sends an attached image', as
   api.selectAgentModel.mockResolvedValue({ ...selected, modelId: 'vision-model-b' });
   fireEvent.change(screen.getByRole('combobox', { name: 'Session model' }), { target: { value: '' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Custom model ID' }), { target: { value: 'vision-model-b' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply session model' }));
+  fireEvent.blur(screen.getByRole('textbox', { name: 'Custom model ID' }));
   await waitFor(() => expect(api.selectAgentModel).toHaveBeenCalledWith('session1', 'openai', 'vision-model-b'));
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Custom model ID' })).toHaveValue('vision-model-b'));
   const image = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], 'graph.png', { type: 'image/png' });
@@ -251,7 +251,6 @@ test('allows images only for the selected model on a shared connection', async (
   await createSession();
   expect(await screen.findByRole('button', { name: 'Attach images' })).toBeDisabled();
   fireEvent.change(screen.getByRole('combobox', { name: 'Session model' }), { target: { value: 'vision-model' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply session model' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Attach images' })).toBeEnabled());
 });
 
@@ -290,8 +289,8 @@ test('shows all provider models in the existing session dropdown', async () => {
   await createSession();
   const sessionModel = await screen.findByRole('combobox', { name: 'Session model' });
   expect(sessionModel.querySelectorAll('option')).toHaveLength(28);
+  expect(screen.queryByRole('button', { name: 'Apply session model' })).not.toBeInTheDocument();
   fireEvent.change(sessionModel, { target: { value: 'model-27' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply session model' }));
   await waitFor(() => expect(api.selectAgentModel).toHaveBeenCalledWith('session1', 'connection_many', 'model-27'));
 });
 
@@ -447,4 +446,42 @@ test('drops selected reasoning effort when refreshed model capabilities disable 
   fireEvent.change(screen.getByRole('textbox', { name: 'Agent prompt' }), { target: { value: 'Inspect graph' } });
   fireEvent.click(screen.getByRole('button', { name: 'Run' }));
   await waitFor(() => expect(api.startAgentRun).toHaveBeenCalledWith('session1', 'Inspect graph', []));
+});
+
+
+test('requires a configured provider instead of offering a demo agent', async () => {
+  api.fetchAgentProviders.mockResolvedValue([]);
+  render(<AgentWorkspace projectId="project1" initialSessionId={null} />);
+  expect(await screen.findByText('Configure an AI provider in Studio Settings to create a session.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'New agent session' })).toBeDisabled();
+  expect(screen.getByRole('combobox', { name: 'Agent provider' }).children).toHaveLength(0);
+  expect(api.createAgentSession).not.toHaveBeenCalled();
+});
+
+test('preserves old demo conversations and requires switching provider before running', async () => {
+  api.fetchAgentProviders.mockResolvedValue([]);
+  api.fetchAgentSessions.mockResolvedValue([baseSession]);
+  render(<AgentWorkspace projectId="project1" initialSessionId="session1" />);
+  const input = await screen.findByRole('textbox', { name: 'Agent prompt' });
+  fireEvent.change(input, { target: { value: 'Continue' } });
+  expect(screen.getByText('Choose a configured provider above to continue this session.')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Delete session' })).toBeEnabled();
+});
+
+test('restores the active model and reports a failed automatic model switch', async () => {
+  const selected = { ...baseSession, providerId: 'work', modelId: 'model-a' };
+  api.fetchAgentProviders.mockResolvedValue([
+    { providerId: 'work', displayName: 'Work', models: ['model-a', 'model-b'], configured: true, deterministic: false },
+  ]);
+  api.createAgentSession.mockResolvedValue(selected);
+  api.selectAgentModel.mockRejectedValue(new Error('Provider unavailable'));
+  render(<AgentWorkspace projectId="project1" initialSessionId={null} />);
+  await createSession();
+  const model = await screen.findByRole('combobox', { name: 'Session model' });
+  fireEvent.change(model, { target: { value: 'model-b' } });
+  await waitFor(() => expect(api.selectAgentModel).toHaveBeenCalledWith('session1', 'work', 'model-b'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Provider unavailable');
+  expect(model).toHaveValue('model-a');
+  expect(model).toBeEnabled();
 });

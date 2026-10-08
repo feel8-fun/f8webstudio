@@ -58,8 +58,8 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
   const [providers, setProviders] = useState<readonly AgentProviderSummary[]>([]);
   const [sessions, setSessions] = useState<readonly AgentSessionSummary[]>([]);
   const [session, setSession] = useState<AgentSession | null>(null);
-  const [providerId, setProviderId] = useState('deterministic');
-  const [modelId, setModelId] = useState('graph-builder-v1');
+  const [providerId, setProviderId] = useState('');
+  const [modelId, setModelId] = useState('');
   const [sessionModelDraft, setSessionModelDraft] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState<'auto' | 'low' | 'medium' | 'high'>('auto');
   const [prompt, setPrompt] = useState('');
@@ -109,6 +109,7 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
         const next = items.find((item) => item.providerId === providerId && item.configured && !item.deterministic)
           ?? items.find((item) => item.configured && !item.deterministic) ?? items.find((item) => item.configured);
         if (next !== undefined) { setProviderId(next.providerId); setModelId(next.models[0] ?? ''); }
+        else { setProviderId(''); setModelId(''); }
       }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(errorText(reason)); });
     };
     window.addEventListener(AGENT_PROVIDERS_CHANGED, refresh);
@@ -262,7 +263,7 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
   };
 
   const run = async () => {
-    if (busy || session === null || (!prompt.trim() && images.length === 0) || (images.length > 0 && !supportsImages) || session.status === 'running' || session.status === 'waiting_for_approval') return;
+    if (busy || session === null || !sessionProvider?.configured || (!prompt.trim() && images.length === 0) || (images.length > 0 && !supportsImages) || session.status === 'running' || session.status === 'waiting_for_approval') return;
     setBusy(true); setError('');
     try {
       updateSession(await (!canSetReasoningEffort || reasoningEffort === 'auto'
@@ -311,10 +312,10 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
   };
 
   const changeModel = async (nextProviderId: string, nextModelId: string) => {
-    if (session === null || busy || activeRun || !nextModelId) return;
+    if (session === null || busy || activeRun || !nextModelId || (nextProviderId === session.providerId && nextModelId === session.modelId)) return;
     setBusy(true); setError('');
     try { updateSession(await selectAgentModel(session.sessionId, nextProviderId, nextModelId)); }
-    catch (reason) { setError(errorText(reason)); }
+    catch (reason) { setSessionModelDraft(session.modelId); setError(errorText(reason)); }
     finally { setBusy(false); }
   };
 
@@ -364,7 +365,7 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
     </aside>
 
     <section className="agent-conversation">
-      {session === null ? <div className="agent-empty" role="status"><Bot size={28} /><span>{loadingSession ? 'Loading conversation…' : 'Create a session for the selected project.'}</span></div> : <>
+      {session === null ? <div className="agent-empty" role="status"><Bot size={28} /><span>{loadingSession ? 'Loading conversation…' : providers.some((item) => item.configured) ? 'Create a session for the selected project.' : 'Configure an AI provider in Studio Settings to create a session.'}</span></div> : <>
         <div className="agent-run-header">
           {editingTitle ? <div className="agent-title-edit"><input autoFocus aria-label="Session title" maxLength={120} value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} onKeyDown={(event) => {
             if (event.key === 'Enter') { event.preventDefault(); void saveTitle(); }
@@ -375,11 +376,11 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
             <select aria-label="Session provider" title="Model for the next turn" value={session.providerId} disabled={busy || activeRun} onChange={(event) => {
               const next = providers.find((item) => item.providerId === event.target.value);
               if (next?.models[0]) void changeModel(next.providerId, next.models[0]);
-            }}>{providers.map((item) => <option key={item.providerId} value={item.providerId} disabled={!item.configured}>{item.displayName}</option>)}</select>
-            {sessionProvider?.deterministic ? <span className="agent-fixed-model" title={session.modelId}>{session.modelId}</span> : <><AgentModelPicker key={session.providerId} compact label="Session model" models={sessionProvider?.models ?? []} value={sessionModelDraft} disabled={busy || activeRun} onChange={setSessionModelDraft} onKeyDown={(event) => {
+            }}>{sessionProvider === undefined && <option value={session.providerId} disabled>Choose a configured provider</option>}{providers.map((item) => <option key={item.providerId} value={item.providerId} disabled={!item.configured}>{item.displayName}</option>)}</select>
+            {sessionProvider?.deterministic ? <span className="agent-fixed-model" title={session.modelId}>{session.modelId}</span> : <><AgentModelPicker key={session.providerId} compact label="Session model" models={sessionProvider?.models ?? []} value={sessionModelDraft} disabled={busy || activeRun} onChange={setSessionModelDraft} onCommit={(value) => void changeModel(session.providerId, value)} onKeyDown={(event) => {
               if (event.key === 'Enter') { event.preventDefault(); void changeModel(session.providerId, sessionModelDraft.trim()); }
               if (event.key === 'Escape') setSessionModelDraft(session.modelId);
-            }} /><button className="icon-button" type="button" title="Apply model for next turn" aria-label="Apply session model" disabled={busy || activeRun || !sessionModelDraft.trim() || sessionModelDraft.trim() === session.modelId} onClick={() => void changeModel(session.providerId, sessionModelDraft.trim())}><Check size={14} /></button></>}
+            }} /></>}
           </div>
           {!editingTitle && <button className="icon-button" type="button" title={activeRun ? 'Stop the run before renaming' : 'Rename session'} aria-label="Rename session" disabled={busy || activeRun} onClick={() => { setTitleDraft(session.title); setEditingTitle(true); }}><Pencil size={14} /></button>}
           <button className="icon-button" type="button" title={activeRun ? 'Stop the run before deleting' : 'Delete session'} aria-label="Delete session" disabled={busy || activeRun} onClick={() => setConfirmDelete(true)}><Trash2 size={14} /></button>
@@ -407,17 +408,19 @@ export function AgentWorkspace({ projectId, initialSessionId }: { readonly proje
             if (transcript.current !== null) transcript.current.scrollTop = transcript.current.scrollHeight;
           }}>Jump to latest</button>}
           {images.length > 0 && <div className="agent-compose-images">{images.map((image, index) => <div key={`${image.name}-${index}`} className="agent-compose-image"><img src={image.dataUrl} alt={image.name} /><span title={image.name}>{image.name}</span><button className="icon-button" type="button" aria-label={`Remove ${image.name}`} title={`Remove ${image.name}`} onClick={() => setImages((current) => current.filter((_, position) => position !== index))}><X size={14} /></button></div>)}</div>}
-          <textarea ref={promptInput} aria-label="Agent prompt" aria-describedby="agent-compose-hint" placeholder="Describe what you want to do…" rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} onPaste={(event) => {
-            const files = Array.from(event.clipboardData.files).filter((file) => IMAGE_TYPES.includes(file.type));
-            if (files.length > 0 && supportsImages) { event.preventDefault(); void attachImages(files); }
-          }} onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
-              event.preventDefault();
-              void run();
-            }
-          }} disabled={busy || session.status === 'running' || session.status === 'waiting_for_approval'} />
-          <div className="agent-compose-actions"><input ref={imageInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden aria-label="Choose agent images" onChange={(event) => { void attachImages(Array.from(event.target.files ?? [])); event.target.value = ''; }} /><button type="button" className="icon-button" aria-label="Attach images" title={supportsImages ? 'Attach images' : 'Selected model does not support images'} disabled={busy || activeRun || !supportsImages} onClick={() => imageInput.current?.click()}><ImagePlus size={17} /></button>{canSetReasoningEffort && <label className="agent-effort-control" title="Reasoning effort for this run; the selected model must support it"><BrainCircuit size={16} aria-hidden="true" /><select aria-label="Reasoning effort" value={reasoningEffort} disabled={busy || activeRun} onChange={(event) => setReasoningEffort(event.target.value as 'auto' | 'low' | 'medium' | 'high')}><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>}<button type="button" className="command-button primary" disabled={busy || (!prompt.trim() && images.length === 0) || (images.length > 0 && !supportsImages) || activeRun} onClick={() => void run()}><Send size={15} />Run</button></div>
-          <small id="agent-compose-hint" className="agent-compose-hint">{session.status === 'running' ? 'Agent is working. You can stop it above.' : session.status === 'waiting_for_approval' ? 'Review the proposed action above to continue.' : images.length > 0 && !supportsImages ? 'Switch to an image-capable model or remove the attached images.' : 'Ctrl / ⌘ + Enter to send · Enter for a new line'}</small>
+          <div className="agent-compose-input">
+            <textarea ref={promptInput} aria-label="Agent prompt" aria-describedby="agent-compose-hint" placeholder="Describe what you want to do…" rows={3} value={prompt} onChange={(event) => setPrompt(event.target.value)} onPaste={(event) => {
+              const files = Array.from(event.clipboardData.files).filter((file) => IMAGE_TYPES.includes(file.type));
+              if (files.length > 0 && supportsImages) { event.preventDefault(); void attachImages(files); }
+            }} onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void run();
+              }
+            }} disabled={busy || session.status === 'running' || session.status === 'waiting_for_approval'} />
+            <div className="agent-compose-actions"><input ref={imageInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden aria-label="Choose agent images" onChange={(event) => { void attachImages(Array.from(event.target.files ?? [])); event.target.value = ''; }} /><button type="button" className="icon-button" aria-label="Attach images" title={supportsImages ? 'Attach images' : 'Selected model does not support images'} disabled={busy || activeRun || !supportsImages} onClick={() => imageInput.current?.click()}><ImagePlus size={17} /></button>{canSetReasoningEffort && <label className="agent-effort-control" title="Reasoning effort for this run; the selected model must support it"><BrainCircuit size={16} aria-hidden="true" /><select aria-label="Reasoning effort" value={reasoningEffort} disabled={busy || activeRun} onChange={(event) => setReasoningEffort(event.target.value as 'auto' | 'low' | 'medium' | 'high')}><option value="auto">Auto</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></label>}<button type="button" className="command-button primary" disabled={busy || !sessionProvider?.configured || (!prompt.trim() && images.length === 0) || (images.length > 0 && !supportsImages) || activeRun} onClick={() => void run()}><Send size={15} />Run</button></div>
+          </div>
+          <small id="agent-compose-hint" className="agent-compose-hint">{!sessionProvider?.configured ? 'Choose a configured provider above to continue this session.' : session.status === 'running' ? 'Agent is working. You can stop it above.' : session.status === 'waiting_for_approval' ? 'Review the proposed action above to continue.' : images.length > 0 && !supportsImages ? 'Switch to an image-capable model or remove the attached images.' : 'Ctrl / ⌘ + Enter to send · Enter for a new line'}</small>
         </div>
       </>}
       {error && <div className="agent-error" role="alert">{error}</div>}

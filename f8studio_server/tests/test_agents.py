@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from offline_agent import OfflineAgentProvider
 import httpx
 import msgspec
 from agent_framework import Agent, Message
@@ -249,6 +250,7 @@ def test_deterministic_agent_builds_validates_deploys_and_publishes_graph_event(
         service_roots=(),
         media_gateway=InProcessMediaGateway(),
     )
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     app = create_app(web_dist=tmp_path, application=studio)
 
     with TestClient(app) as client:
@@ -295,9 +297,10 @@ def test_agent_session_auto_title_rename_and_delete(tmp_path: Path) -> None:
         data_dir=tmp_path / "data", runtime=AgentRuntimeGateway(), service_roots=(),
         media_gateway=InProcessMediaGateway(),
     )
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     with TestClient(create_app(web_dist=tmp_path, application=studio)) as client:
         assert client.post("/api/projects", json={"projectId": "session_lifecycle", "name": "Lifecycle"}).status_code == 201
-        created = client.post("/api/agents/sessions", json={"projectId": "session_lifecycle"})
+        created = client.post("/api/agents/sessions", json={"projectId": "session_lifecycle", "providerId": "deterministic", "modelId": "graph-builder-v1"})
         assert created.status_code == 201
         session_id = created.json()["sessionId"]
         started = client.post(f"/api/agents/sessions/{session_id}/runs", json={
@@ -320,7 +323,7 @@ def test_agent_session_auto_title_rename_and_delete(tmp_path: Path) -> None:
         assert client.get("/api/agents/sessions?project_id=session_lifecycle").json() == []
         assert client.get("/api/projects/session_lifecycle").status_code == 200
 
-        second = client.post("/api/agents/sessions", json={"projectId": "session_lifecycle"})
+        second = client.post("/api/agents/sessions", json={"projectId": "session_lifecycle", "providerId": "deterministic", "modelId": "graph-builder-v1"})
         second_id = second.json()["sessionId"]
         assert client.put(f"/api/agents/sessions/{second_id}", json={"title": "Studio agent"}).status_code == 200
         manual_run = client.post(f"/api/agents/sessions/{second_id}/runs", json={"prompt": "Build another graph"})
@@ -332,6 +335,7 @@ def test_agent_session_auto_title_rename_and_delete(tmp_path: Path) -> None:
 def test_denied_approval_finishes_run_without_stuck_waiting(tmp_path: Path) -> None:
     studio = StudioApplication(data_dir=tmp_path, runtime=AgentRuntimeGateway(), service_roots=(),
                                media_gateway=InProcessMediaGateway())
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     with TestClient(create_app(web_dist=tmp_path, application=studio)) as client:
         client.post("/api/projects", json={"projectId": "denied", "name": "Denied"})
         session_id = _create_session(client, "denied")
@@ -360,6 +364,7 @@ def test_run_timeout_cleans_pending_approval_and_tool(tmp_path: Path, monkeypatc
     monkeypatch.setattr("f8studio_server.agents.service.run_timeout", controlled_timeout)
     studio = StudioApplication(data_dir=tmp_path, runtime=AgentRuntimeGateway(), service_roots=(),
                                media_gateway=InProcessMediaGateway())
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     with TestClient(create_app(web_dist=tmp_path, application=studio)) as client:
         client.post("/api/projects", json={"projectId": "timeout", "name": "Timeout"})
         session_id = _create_session(client, "timeout")
@@ -384,6 +389,7 @@ def test_agent_approval_is_invalidated_when_another_client_changes_revision(tmp_
         service_roots=(),
         media_gateway=InProcessMediaGateway(),
     )
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     app = create_app(web_dist=tmp_path, application=studio)
 
     with TestClient(app) as client:
@@ -466,7 +472,6 @@ def test_agent_provider_api_never_exposes_server_credentials(tmp_path: Path, mon
         assert secret not in providers.text
     provider_status = {item["providerId"]: item["configured"] for item in providers.json()}
     assert provider_status == {
-        "deterministic": True,
         "openai": True,
         "anthropic": True,
         "google_gemini": True,
@@ -743,6 +748,7 @@ def test_named_openai_compatible_connections_use_their_own_credentials(tmp_path:
 @pytest.mark.parametrize("upstream_status, expected_status", [(200, 200), (429, 429), (401, 502)])
 def test_decision_gateway_uses_saved_credentials_and_maps_upstream_errors(tmp_path: Path, upstream_status: int, expected_status: int) -> None:
     studio = StudioApplication(data_dir=tmp_path / "data", runtime=AgentRuntimeGateway(), service_roots=(), media_gateway=InProcessMediaGateway())
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     asyncio.run(studio.decisions.close())
     def respond(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer decision-secret"
@@ -769,6 +775,7 @@ def test_agent_run_fails_with_tool_context_when_deployment_fails(tmp_path: Path)
         service_roots=(),
         media_gateway=InProcessMediaGateway(),
     )
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     app = create_app(web_dist=tmp_path, application=studio)
 
     with TestClient(app) as client:
@@ -799,6 +806,7 @@ def test_cancelling_pending_agent_run_cancels_approval_and_tool(tmp_path: Path) 
         service_roots=(),
         media_gateway=InProcessMediaGateway(),
     )
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     app = create_app(web_dist=tmp_path, application=studio)
 
     with TestClient(app) as client:
@@ -899,6 +907,7 @@ def test_parallel_model_tools_preserve_every_call_and_result(tmp_path: Path) -> 
             data_dir=tmp_path / "data", runtime=AgentRuntimeGateway(), service_roots=(),
             media_gateway=InProcessMediaGateway(),
         )
+        studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
         studio.projects.create(CreateProjectRequest(project_id="parallel_tools", name="Parallel tools"))
         record = studio.agents.create(CreateAgentSessionRequest(
             project_id="parallel_tools", provider_id="deterministic", model_id="graph-builder-v1",
@@ -990,6 +999,7 @@ def test_compact_graph_proposal_reaches_approval_and_applies_complete_cosine_cha
 def test_compact_proposal_refreshes_stale_installed_specs_before_graph_edit(tmp_path: Path, engine_service_root: Path) -> None:
     data_dir = tmp_path / "data"
     studio = StudioApplication(data_dir=data_dir, runtime=AgentRuntimeGateway(), service_roots=(engine_service_root,), media_gateway=InProcessMediaGateway())
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     catalog = studio.catalog
     engine = catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="engine", service_class="f8.pyengine"))
     web = catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class="f8.pystudio"))
@@ -1017,6 +1027,7 @@ def test_compact_proposal_refreshes_stale_installed_specs_before_graph_edit(tmp_
     studio.projects.create(CreateProjectRequest(project_id="stale_agent_graph", name="Stale agent graph"))
     ProjectRepository(data_dir / "studio.sqlite3").replace_document("stale_agent_graph", document)
     studio = StudioApplication(data_dir=data_dir, runtime=AgentRuntimeGateway(), service_roots=(engine_service_root,), media_gateway=InProcessMediaGateway())
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     changes = msgspec.convert({
         "expectedGraphRevision": 0, "expectedLayoutRevision": 0,
         "nodes": [
@@ -1069,6 +1080,7 @@ def test_compact_proposal_refreshes_stale_installed_specs_before_graph_edit(tmp_
 def test_agent_approval_is_invalidated_by_layout_only_edit(tmp_path: Path) -> None:
     studio = StudioApplication(data_dir=tmp_path / "data", runtime=AgentRuntimeGateway(),
                                service_roots=(), media_gateway=InProcessMediaGateway())
+    studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
     with TestClient(create_app(web_dist=tmp_path, application=studio)) as client:
         client.post('/api/projects', json={'projectId': 'layout-conflict', 'name': 'Layout'})
         service = client.post('/api/catalog/nodes', json={
@@ -1097,6 +1109,7 @@ def test_extension_tool_approval_is_independent_of_graph_revisions(tmp_path: Pat
         from f8studio_server.agents.models import CreateAgentSessionRequest, ResolveAgentApprovalRequest
         studio = StudioApplication(data_dir=tmp_path / 'data', runtime=AgentRuntimeGateway(),
                                    service_roots=(), media_gateway=InProcessMediaGateway())
+        studio.agents._providers = OfflineAgentProvider(studio.data_dir / "agent-providers.json")
         studio.projects.create(CreateProjectRequest(project_id='tool-approval', name='Tool approval'))
         record = studio.agents.create(CreateAgentSessionRequest(
             project_id='tool-approval', provider_id='deterministic', model_id='graph-builder-v1',

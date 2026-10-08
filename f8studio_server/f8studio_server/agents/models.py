@@ -127,8 +127,8 @@ class AgentSessionSummary(msgspec.Struct, frozen=True, kw_only=True, rename="cam
 class CreateAgentSessionRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
     project_id: str
     title: str = "New agent session"
-    provider_id: str = "deterministic"
-    model_id: str = "graph-builder-v1"
+    provider_id: str
+    model_id: str
 
 
 class StartAgentRunRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):

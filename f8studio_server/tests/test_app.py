@@ -160,8 +160,9 @@ def test_delete_legacy_project_without_decoding_its_document(tmp_path: Path) -> 
         assert client.get("/api/projects/legacy").status_code == 422
         assert client.get("/api/projects/legacy/deployments/latest").status_code == 200
         assert [project["projectId"] for project in client.get("/api/projects").json()] == ["legacy"]
+        assert client.put("/api/agents/providers/ollama/settings", json={"model": "test-model", "endpoint": "http://localhost:11434/v1"}).status_code == 200
         assert client.post("/api/agents/sessions", json={
-            "projectId": "legacy", "providerId": "deterministic", "modelId": "graph-builder-v1",
+            "projectId": "legacy", "providerId": "ollama", "modelId": "test-model",
         }).status_code == 201
         assert client.get("/api/agents/sessions", params={"project_id": "legacy"}).status_code == 200
         assert client.delete("/api/projects/legacy").status_code == 204

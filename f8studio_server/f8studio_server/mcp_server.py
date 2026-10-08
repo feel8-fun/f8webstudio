@@ -78,9 +78,9 @@ def create_mcp_server(
     @server.tool()
     def agent_session_create(
         project_id: str,
+        provider_id: str,
+        model_id: str,
         title: str = "MCP agent session",
-        provider_id: str = "deterministic",
-        model_id: str = "graph-builder-v1",
     ) -> object:
         with client_factory(studio_url) as client:
             return client.create_agent_session(

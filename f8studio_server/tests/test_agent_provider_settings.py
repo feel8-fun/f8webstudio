@@ -386,3 +386,20 @@ def test_invalid_settings_file_does_not_prevent_startup(tmp_path: Path, caplog: 
     assert store.get("openai").model
     assert "Cannot load provider settings" in caplog.text
     assert path.read_text() == content
+
+
+def test_production_registry_has_no_demo_provider(tmp_path: Path) -> None:
+    registry = AgentProviderRegistry(tmp_path / "providers.json")
+    assert all(item.provider_id != "deterministic" for item in registry.summaries())
+    with pytest.raises(ValueError, match="unknown agent provider"):
+        registry.validate_selection("deterministic", "graph-builder-v1")
+
+
+def test_agent_session_requires_explicit_provider_and_model() -> None:
+    import msgspec
+    from f8studio_server.agents.models import CreateAgentSessionRequest
+
+    with pytest.raises(msgspec.ValidationError, match="providerId"):
+        msgspec.json.decode(b'{"projectId":"example"}', type=CreateAgentSessionRequest)
+    with pytest.raises(msgspec.ValidationError, match="modelId"):
+        msgspec.json.decode(b'{"projectId":"example","providerId":"openai"}', type=CreateAgentSessionRequest)

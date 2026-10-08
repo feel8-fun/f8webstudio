@@ -55,10 +55,6 @@ class AgentProviderRegistry:
 
     def summaries(self) -> tuple[AgentProviderSummary, ...]:
         return (
-            AgentProviderSummary(
-                provider_id="deterministic", display_name="Deterministic graph agent",
-                models=("graph-builder-v1",), configured=True, deterministic=True,
-            ),
             *(AgentProviderSummary(
                 provider_id=setting.provider_id, display_name=setting.display_name,
                 models=setting.models, configured=setting.configured,

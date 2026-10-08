@@ -1,0 +1,86 @@
+.studio-node { box-sizing: border-box; overflow: visible; border: 1px solid #46505b; border-radius: 3px; color: #dfe3e7; background: #1b1f25; box-shadow: 0 3px 12px rgb(0 0 0 / 20%); }
+.studio-node-operator { width: 100%; height: 100%; contain: inline-size; }
+.studio-node-service { width: 100%; height: 100%; border-color: #3d755f; background: rgb(23 36 31 / 86%); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }
+.studio-node-service-compact { background: #192a24; }
+.studio-node-selected { border-color: #70d2aa; box-shadow: 0 0 0 1px #70d2aa, 0 3px 12px rgb(0 0 0 / 26%); }
+.service-resize-line { border-color: #70d2aa !important; }
+.service-resize-handle {
+  width: 8px !important;
+  height: 8px !important;
+  border: 1px solid #102019 !important;
+  border-radius: 1px !important;
+  background: #70d2aa !important;
+}
+.studio-node header { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 4px; min-height: 34px; padding: 3px 6px; border-bottom: 1px solid #343a43; border-radius: 2px 2px 0 0; background: #272c33; }
+.studio-node-service header { grid-template-columns: 16px minmax(0, 1fr) auto auto; border-top: 2px solid #4eaf87; background: #20332b; }
+.studio-node-operator header { border-top: 2px solid #6688ac; }
+.studio-node-inline-video { display: grid; place-items: center; width: 100%; height: 135px; min-height: 135px; overflow: hidden; border-bottom: 1px solid #343a43; background: #050708; }
+.studio-node-inline-audio { display: grid; place-items: center; width: 100%; height: 135px; min-height: 135px; overflow: hidden; border-bottom: 1px solid #343a43; background: #080a0c; }
+.studio-node-inline-three { display: grid; place-items: center; width: 100%; height: 135px; min-height: 135px; overflow: hidden; border-bottom: 1px solid #343a43; background: #0d1112; }
+.studio-node-inline-data { display: grid; place-items: center; width: 100%; height: 135px; min-height: 135px; overflow: hidden; border-bottom: 1px solid #343a43; background: #0a0d10; }
+.studio-node-inline-tcode { display: block; box-sizing: border-box; min-width: 0; }
+.studio-node-inline-data canvas { display: block; width: 100%; height: 100%; }
+.studio-node-inline-data pre { width: 100%; max-height: 100%; margin: 0; padding: 8px; overflow: auto; color: #d4d9df; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.inline-video-placeholder { max-width: calc(100% - 20px); overflow: hidden; color: #727c87; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.studio-node header div { display: grid; min-width: 0; gap: 1px; }
+.studio-node header strong, .studio-node header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.studio-node header strong { font-size: 10px; }
+.studio-node header span { color: #89929e; font-family: "SFMono-Regular", Consolas, monospace; font-size: 8px; }
+.studio-node header .node-disabled { padding: 2px 4px; color: #dda1a1; background: #48292b; font-family: inherit; font-size: 8px; }
+.studio-node header .service-child-count { padding: 2px 5px; color: #9fcbb8; background: #29473b; font-family: inherit; font-size: 8px; }
+.studio-node header .node-view-button { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; color: #a9c7e6; background: transparent; cursor: pointer; }
+.studio-node header .node-view-button:hover { color: #e2f0ff; background: #31455a; }
+.node-ports { display: grid; padding: 2px 0; }
+.port-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; align-items: center; height: 24px; min-height: 24px; }
+.port-row-shared-state { grid-template-columns: 64px minmax(0, 1fr) 12px; }
+.port-row-input-state-control { grid-template-columns: 88px minmax(0, 1fr) 12px; }
+.port-row-command { grid-template-columns: 16px minmax(0, 1fr) 16px; }
+.port-label { position: relative; display: flex; align-items: center; min-width: 0; padding-left: 8px; color: #aab1ba; font-size: 9px; }
+.port-label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.port-output { justify-content: flex-end; padding-right: 8px; padding-left: 2px; text-align: right; }
+.port-control { display: grid; min-width: 0; height: 24px; padding: 2px 3px; align-items: center; overflow: hidden; }
+.port-command-button { width: 100%; height: 20px; min-width: 0; padding: 0 5px; overflow: hidden; border: 1px solid #52606d; border-radius: 2px; color: #d4d9df; background: #29313a; font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.port-command-button:hover:not(:disabled) { border-color: #789bc2; background: #344251; }
+.port-command-button:focus-visible { outline: 2px solid #72d6b0; outline-offset: 1px; }
+.port-command-button:disabled { opacity: 0.45; }
+.port-command-name { overflow: hidden; color: #aab1ba; font-size: 9px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.port-handle {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.port-handle::before {
+  position: absolute;
+  inset: -7px;
+  background: transparent;
+  content: "";
+}
+.port-handle::after {
+  position: absolute;
+  inset: -1px;
+  background: var(--port-color);
+  content: "";
+  pointer-events: none;
+}
+.port-handle-data { --port-color: #54bd8c; }
+.port-handle-data::after { border-radius: 50%; }
+.port-handle-state, .port-handle-command { --port-color: #dfaa57; }
+.port-handle-command::after { inset: 1px; transform: rotate(45deg); }
+.port-handle-exec { --port-color: #789bc2; }
+.port-handle-exec::after { clip-path: polygon(0 0, 60% 0, 100% 50%, 60% 100%, 0 100%); }
+.graph-edge-data path { stroke: #54bd8c; }
+.graph-edge-state path { stroke: #dfaa57; }
+.graph-edge-exec path { stroke: #789bc2; stroke-width: 2; }
+/* An existing edge must not intercept a new connection landing on its input. */
+.react-flow:has(.react-flow__handle.connectingfrom, .react-flow__handle.clickconnecting) .react-flow__edge,
+.react-flow:has(.react-flow__handle.connectingfrom, .react-flow__handle.clickconnecting) .react-flow__edge path { pointer-events: none; }
+.react-flow__edge.selected .react-flow__edge-path { stroke-width: 3; filter: drop-shadow(0 0 2px rgb(255 255 255 / 35%)); }
+.studio-node-patch-hub header { display: flex; min-height: 22px; height: 22px; padding: 2px 6px; border-top: 0; justify-content: center; }
+.studio-node-patch-hub header strong { font-size: 9px; }
+.patch-hub-port-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) 8px; align-items: center; height: 24px; }
+.patch-hub-port-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 9px; color: #aab1ba; }
+
+.port-static-value { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.graph-view { background: #13171c; font-family: sans-serif; }

@@ -1,11 +1,12 @@
 import { ShareStateDialog } from "./ShareStateDialog";
+import { CaptureComponentDialog } from './CaptureComponentDialog';
 import { NodeInspector, EdgeInspector } from './GraphInspectors';
 import { useGraphProject } from './useGraphProject';
 import { useGraphCanvas } from './useGraphCanvas';
 import { useGraphCommands } from './useGraphCommands';
 import { useProjectDeployment } from './useProjectDeployment';
 import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type Edge } from '@xyflow/react';
-import { Bot, Copy, Download, Play, Plus, Redo2, RotateCcw, Share2, Square, Trash2, Upload, X } from 'lucide-react';
+import { Bot, Box, Copy, Download, Play, Plus, Redo2, RotateCcw, Share2, Square, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { useLivePrefix } from '../api/liveStore';
@@ -36,6 +37,8 @@ function savedInspectorWidth(): number {
 function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId: string) => void }) {
   const [sharing, setSharing] = useState(false);
   const closeSharing = useCallback(() => setSharing(false), []);
+  const [capturingIds, setCapturingIds] = useState<readonly string[] | null>(null);
+  const closeCapture = useCallback(() => setCapturingIds(null), []);
   const [quickSearch, setQuickSearch] = useState(false);
   const [portMenu, setPortMenu] = useState<PortMenuTarget | null>(null);
   const [copiedType, setCopiedType] = useState<CopiedPortType | null>(null);
@@ -159,6 +162,10 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           <button type="button" title="Undo" aria-label="Undo" disabled={busy || project === null} onClick={() => void history('undo')}><RotateCcw size={16} /></button>
           <button type="button" title="Redo" aria-label="Redo" disabled={busy || project === null} onClick={() => void history('redo')}><Redo2 size={16} /></button>
           <button type="button" title="Duplicate selection" aria-label="Duplicate selection" disabled={busy || project === null || (selectedNodeId === null && !nodes.some((node) => node.selected))} onClick={duplicateSelection}><Copy size={15} /></button>
+          <button type="button" title="Save selection as component" aria-label="Save selection as component" disabled={locked || project === null || (selectedNodeId === null && !nodes.some((node) => node.selected))} onClick={() => {
+            const ids = nodes.filter((node) => node.selected).map((node) => node.id);
+            setCapturingIds(ids.length > 0 ? ids : selectedNodeId === null ? [] : [selectedNodeId]);
+          }}><Box size={15} /></button>
           <button type="button" title="Export local backup (includes private saved values)" aria-label="Export graph" disabled={busy || project === null} onClick={() => void downloadGraph().catch((reason: unknown) => console.error("Graph export failed", reason))}><Download size={15} /></button>
           <button type="button" title="Export shared graph" aria-label="Export shared graph" disabled={busy || saving || project === null} onClick={() => setSharing(true)}><Share2 size={15} /></button>
           <button type="button" title="Import graph" aria-label="Import graph" disabled={busy || project === null} onClick={() => graphImportRef.current?.click()}><Upload size={15} /></button>
@@ -255,6 +262,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
       </aside>
       {activeCommand !== null && <CommandDialog key={`${activeCommand.node.nodeId}:${activeCommand.command.name}`} node={activeCommand.node} command={activeCommand.command} onClose={resetCommand} onResult={reportCommand} />}
       {sharing && project !== null && <ShareStateDialog key={project.projectId} title="Export shared graph" document={project.document} onClose={closeSharing} onShare={(excluded) => downloadGraph(excluded)} />}
+      {capturingIds !== null && project !== null && <CaptureComponentDialog key={project.projectId} document={project.document} nodeIds={capturingIds} onClose={closeCapture} onSaved={(name) => reportCommand('success', 'Component saved', name)} />}
       {quickSearch && <NodeQuickSearch catalog={catalog} services={new Set(project?.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))} onAdd={(spec) => void addSpec(spec)} onClose={() => setQuickSearch(false)} />}
       {portMenu && <PortContextMenu target={portMenu} copied={copiedType} busy={locked} onClose={closePortMenu} onCopy={(value) => { setCopiedType(value); closePortMenu(); }} onPaste={() => {
         if (!copiedType || !project) return;

@@ -126,6 +126,7 @@ class StudioApplication:
             monitors=self.monitors,
             commits=commits,
             runtime=self.runtime,
+            assets=self.assets,
         )
         providers = AgentProviderRegistry(project_repository.database_path.with_name("agent-providers.json"))
         self.decisions = SystemOneDecisionClient(providers)

@@ -1061,8 +1061,9 @@ def test_sharing_api_exclusions_preserve_local_configuration_and_definition_defa
         assert definition == node["spec"]
         captured = client.post("/api/projects/sharing/components", json={**request, "name": "Component"})
         assert captured.status_code == 201
-        assert captured.json()["content"]["schemaVersion"] == "f8studio-component/2"
-        assert captured.json()["content"]["nodes"][0]["stateValues"] == {}
+        assert captured.json()["content"]["format"] == "f8component"
+        assert captured.json()["content"]["formatVersion"] == 1
+        assert captured.json()["content"]["services"]["studio"]["stateValues"] == {}
         backup = client.get("/api/projects/sharing/graph/export").json()
         assert backup["services"]["studio"]["stateValues"] == {"tickMs": 250}
         local = client.get("/api/projects/sharing").json()["document"]
@@ -1071,3 +1072,38 @@ def test_sharing_api_exclusions_preserve_local_configuration_and_definition_defa
         assert client.post("/api/projects/sharing/graph/share", json={**request, "expectedGraphRevision": 0}).status_code == 409
         assert client.post("/api/projects/sharing/components", json={**request, "expectedGraphRevision": 0}).status_code == 409
         assert client.post("/api/projects/sharing/graph/share", json={**request, "excludedStates": [{"nodeId": "studio", "field": "missing"}]}).status_code == 422
+
+
+def test_component_selection_preview_and_atomic_insertion_api(tmp_path: Path) -> None:
+    app = create_app(web_dist=tmp_path, data_dir=tmp_path / "data", runtime=FakeRuntimeGateway(),
+                     service_roots=(), media_gateway=InProcessMediaGateway())
+    with TestClient(app) as client:
+        assert client.post("/api/projects", json={"projectId": "component_api", "name": "Components"}).status_code == 201
+        host = client.post("/api/catalog/nodes", json={"kind": "service", "nodeId": "studio", "serviceClass": "f8.pystudio"}).json()
+        operator = client.post("/api/catalog/nodes", json={"kind": "operator", "nodeId": "stepper", "serviceClass": "f8.pystudio",
+            "serviceId": "studio", "operatorClass": "f8.value_stepper"}).json()
+        patched = client.post("/api/projects/component_api/patch", json={"requestId": "seed", "expectedGraphRevision": 0,
+            "expectedLayoutRevision": 0, "operations": [{"op": "createNode", "node": host}, {"op": "createNode", "node": operator}]})
+        assert patched.status_code == 200
+        captured = client.post("/api/projects/component_api/components", json={"expectedGraphRevision": 1,
+            "expectedLayoutRevision": 0, "nodeIds": ["stepper"], "name": "Stepper"})
+        assert captured.status_code == 201
+        asset_id = captured.json()["assetId"]
+        assert captured.json()["content"]["services"] == {}
+        preview = client.get(f"/api/assets/{asset_id}/versions/1/preview")
+        assert preview.status_code == 200
+        assert preview.json()["issues"] == []
+        assert preview.json()["component"]["hostBindings"][0]["bindingId"] == "studio"
+        request = {"requestId": "component_insert", "assetId": asset_id, "version": 1,
+            "expectedGraphRevision": 1, "expectedLayoutRevision": 0, "hostBindings": {"studio": "studio"}}
+        proposed = client.post("/api/projects/component_api/components:preview", json=request)
+        assert proposed.status_code == 200
+        assert client.get("/api/projects/component_api").json()["document"]["graphRevision"] == 1
+        rejected = client.post("/api/projects/component_api/components:insert", json={**request, "hostBindings": {}})
+        assert rejected.status_code == 422
+        inserted = client.post("/api/projects/component_api/components:insert", json=request)
+        assert inserted.status_code == 200
+        assert inserted.json()["source"]["nodeMap"] == proposed.json()["source"]["nodeMap"]
+        assert client.post("/api/projects/component_api/components:insert", json=request).json() == inserted.json()
+        assert client.get("/api/projects/component_api").json()["document"]["graphRevision"] == 2
+        assert len(inserted.json()["patch"]["document"]["nodes"]) == 3

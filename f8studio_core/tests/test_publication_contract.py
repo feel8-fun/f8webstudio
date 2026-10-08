@@ -91,6 +91,33 @@ def test_cut_state_edge_retains_authored_fallback_and_exposes_endpoint() -> None
     assert connected.endpoints == ()
 
 
+def test_external_host_disabled_status_is_not_captured_into_component_semantics() -> None:
+    document = sample()
+    source = msgspec.structs.replace(document.nodes[1], node_id="source")
+    edge = GraphEdge(edge_id="binding", kind=GraphEdgeKind.state, from_node_id="source",
+        from_port_id="state:output:gain", to_node_id="script", to_port_id="state:input:gain")
+    document = msgspec.structs.replace(document, nodes=(msgspec.structs.replace(document.nodes[0], enabled=False), document.nodes[1], source), edges=(edge,))
+    component = capture_component(document, node_ids=("script", "source"))
+    assert "gain" not in component.operators["script"].state_values
+    assert component_document(component).nodes[0].enabled
+
+
+def test_selection_cut_with_required_state_and_no_authored_fallback_fails_explicitly() -> None:
+    document = sample()
+    target = document.nodes[1]
+    fields = [msgspec.structs.replace(field, valueRequired=True, valueSchema=number_schema())
+              if field.name == "gain" else field for field in target.spec.stateFields]
+    from f8studio_core.graph import replace_node_spec
+    target = replace_node_spec(target, msgspec.structs.replace(target.spec, stateFields=fields))
+    source = msgspec.structs.replace(document.nodes[1], node_id="source")
+    target = msgspec.structs.replace(target, state_values={"code": "pass"})
+    edge = GraphEdge(edge_id="binding", kind=GraphEdgeKind.state, from_node_id="source",
+        from_port_id="state:output:gain", to_node_id="script", to_port_id="state:input:gain")
+    document = msgspec.structs.replace(document, nodes=(document.nodes[0], target, source), edges=(edge,))
+    with pytest.raises(ValueError, match="cuts required state input script.gain"):
+        capture_component(document, node_ids=("script",))
+
+
 def test_dependency_diagnostics_and_coverage_are_explicit_and_preview_is_available() -> None:
     publication = create_component_publication(capture_component(sample(), node_ids=("script",)), manifest("component"))
     issues = diagnose_dependencies(publication.manifest, ())

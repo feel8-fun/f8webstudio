@@ -57,6 +57,29 @@ def create_mcp_server(
             return client.apply_patch(project_id, patch)
 
     @server.tool()
+    def component_capture(project_id: str, request: dict[str, Any]) -> object:
+        """Save a node selection as a component using expected revisions and nodeIds."""
+        with client_factory(studio_url) as client:
+            return client.capture_component(project_id, request)
+
+    @server.tool()
+    def component_preview(asset_id: str, version: int) -> object:
+        """Preview a fixed component version and its missing definitions without runtime effects."""
+        with client_factory(studio_url) as client:
+            return client.component_preview(asset_id, version)
+
+    @server.tool()
+    def component_preview_insertion(project_id: str, request: dict[str, Any]) -> object:
+        with client_factory(studio_url) as client:
+            return client.preview_component_insertion(project_id, request)
+
+    @server.tool()
+    def component_insert(project_id: str, request: dict[str, Any]) -> object:
+        """Atomically insert a fixed version with explicit hostBindings and requestId."""
+        with client_factory(studio_url) as client:
+            return client.insert_component(project_id, request)
+
+    @server.tool()
     def graph_validate(project_id: str, document: dict[str, Any]) -> object:
         with client_factory(studio_url) as client:
             return client.validate(project_id, document)

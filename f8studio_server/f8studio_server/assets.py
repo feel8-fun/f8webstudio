@@ -27,6 +27,7 @@ from f8studio_core.graph.state_policy import ExcludedState, apply_installed_stat
 from f8studio_core.graph.codec import decode_document
 from f8studio_core.graph.spec_edit import validate_spec_snapshot
 from f8studio_core.graph.validation import validate_state_value
+from f8studio_core.publication import capture_component, component_document, decode_component
 
 
 ASSET_SCHEMA_VERSION = "f8studio-asset/1"
@@ -120,6 +121,7 @@ class ShareGraphRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel
 
 class CaptureComponentRequest(ShareGraphRequest, frozen=True, kw_only=True):
     name: str = "Component"
+    node_ids: tuple[str, ...] | None = None
 
 
 def _now() -> str:
@@ -144,6 +146,35 @@ def _validate_content(kind: AssetKind, content: F8JsonValue, *,
                       spec_resolver: SpecResolver | None = None) -> F8JsonValue:
     encoded = msgspec.json.encode(content)
     if kind is AssetKind.component:
+        if isinstance(content, dict) and content.get("format") == "f8component":
+            try:
+                portable = decode_component(encoded)
+            except ValueError as exc:
+                raise InvalidRequestError(f"invalid portable component: {exc}") from exc
+            document = component_document(portable)
+            if spec_resolver is not None:
+                updated: list[GraphNode] = []
+                for node in document.nodes:
+                    try:
+                        installed = spec_resolver(node.service_class, node.operator_class if isinstance(node, OperatorNode) else None)
+                    except KeyError:
+                        logger.warning("Component implementation unavailable for node=%s service=%s; retaining embedded definition",
+                                       node.node_id, node.service_class, exc_info=True)
+                        updated.append(node)
+                        continue
+                    node = apply_installed_state_policy(node, installed)
+                    try:
+                        validate_spec_snapshot(installed, node.spec)
+                    except ValueError:
+                        logger.warning("Component definition incompatible for node=%s service=%s; preserving sanitized snapshot for preview",
+                                       node.node_id, node.service_class, exc_info=True)
+                    updated.append(node)
+                document = msgspec.structs.replace(document, nodes=tuple(updated))
+            try:
+                cleaned = capture_component(document, node_ids=tuple(portable.presentation.node_order) or None)
+            except ValueError as exc:
+                raise InvalidRequestError(f"cannot normalize portable component: {exc}") from exc
+            return _json(msgspec.structs.replace(cleaned, endpoints=portable.endpoints))
         component = msgspec.json.decode(encoded, type=ApplicationContent)
         if component.schema_version not in ("f8studio-component/1", COMPONENT_SCHEMA_VERSION):
             raise InvalidRequestError(f"unsupported component schema: {component.schema_version}")
@@ -336,6 +367,14 @@ class AssetRepository:
             content=_validate_content(summary.kind, msgspec.json.decode(_bytes(row[8]), type=F8JsonValue), spec_resolver=self._spec_resolver),
         )
 
+    def kind(self, asset_id: str) -> AssetKind:
+        asset_id = ensure_token(asset_id, label="asset_id")
+        with self._connect() as connection:
+            row = connection.execute("SELECT kind FROM local_assets WHERE asset_id = ?", (asset_id,)).fetchone()
+        if row is None:
+            raise NotFoundError(f"asset not found: {asset_id}")
+        return AssetKind(_text(row[0]))
+
     def update(self, asset_id: str, request: UpdateAssetRequest) -> AssetRecord:
         asset_id = ensure_token(asset_id, label="asset_id")
         name = request.name.strip()
@@ -386,6 +425,18 @@ class AssetRepository:
             )
             for row in rows
         )
+
+    def version(self, asset_id: str, version: int) -> AssetVersion:
+        asset_id = ensure_token(asset_id, label="asset_id")
+        with self._connect() as connection:
+            row = connection.execute("""SELECT a.kind, v.created_at, v.content FROM local_asset_versions v
+                JOIN local_assets a ON a.asset_id = v.asset_id WHERE v.asset_id = ? AND v.version = ?""",
+                (asset_id, version)).fetchone()
+        if row is None:
+            raise NotFoundError(f"asset version not found: {asset_id}/v{version}")
+        return AssetVersion(asset_id=asset_id, version=version, created_at=_text(row[1]),
+            content=_validate_content(AssetKind(_text(row[0])), msgspec.json.decode(_bytes(row[2]), type=F8JsonValue),
+                                      spec_resolver=self._spec_resolver))
 
     def export(self, asset_id: str) -> AssetExport:
         return AssetExport(schema_version=ASSET_SCHEMA_VERSION, asset=self.get(asset_id), versions=self.versions(asset_id))

@@ -51,6 +51,18 @@ class StudioApiClient:
     def apply_patch(self, project_id: str, patch: Mapping[str, Any]) -> F8JsonValue:
         return self._request("POST", f"/api/projects/{project_id}/patch", json=dict(patch))
 
+    def capture_component(self, project_id: str, request: Mapping[str, Any]) -> F8JsonValue:
+        return self._request("POST", f"/api/projects/{project_id}/components", json=dict(request))
+
+    def component_preview(self, asset_id: str, version: int) -> F8JsonValue:
+        return self._request("GET", f"/api/assets/{asset_id}/versions/{version}/preview")
+
+    def preview_component_insertion(self, project_id: str, request: Mapping[str, Any]) -> F8JsonValue:
+        return self._request("POST", f"/api/projects/{project_id}/components:preview", json=dict(request))
+
+    def insert_component(self, project_id: str, request: Mapping[str, Any]) -> F8JsonValue:
+        return self._request("POST", f"/api/projects/{project_id}/components:insert", json=dict(request))
+
     def validate(self, project_id: str, document: Mapping[str, Any]) -> F8JsonValue:
         return self._request(
             "POST",

@@ -15,6 +15,7 @@ from f8studio_core.graph.exchange import GraphExchange
 from f8studio_core.publication import PublicationCapabilities
 from f8media_protocol import models as media
 from . import assets, editor, local_integration as local, models
+from .component_models import ComponentPreview, InsertComponentRequest, InsertComponentResult
 from .agents import models as agents, provider_settings as settings
 from .agents.provider_probe import ProviderProbeResult
 from .catalog import CatalogSnapshot
@@ -105,6 +106,9 @@ ROUTES = MANAGEMENT_ROUTES + (
     RouteContract("get", "/api/projects/{project_id}/graph/export", None, GraphExchange, 200),
     RouteContract("post", "/api/projects/{project_id}/graph/share", assets.ShareGraphRequest, GraphExchange, 200),
     RouteContract("post", "/api/projects/{project_id}/components", assets.CaptureComponentRequest, assets.AssetRecord, 201),
+    RouteContract("get", "/api/assets/{asset_id}/versions/{version}/preview", None, ComponentPreview, 200),
+    RouteContract("post", "/api/projects/{project_id}/components:preview", InsertComponentRequest, InsertComponentResult, 200),
+    RouteContract("post", "/api/projects/{project_id}/components:insert", InsertComponentRequest, InsertComponentResult, 200),
     RouteContract("post", "/api/projects/{project_id}/graph/import", GraphExchange, models.ProjectRecord, 200),
     RouteContract("put", "/api/projects/{project_id}", UpdateProjectRequest, models.ProjectRecord, 200),
     RouteContract("get", "/api/projects/{project_id}/versions", None, tuple[assets.ProjectVersion, ...], 200),

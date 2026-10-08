@@ -1,17 +1,20 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import type { StudioDocument } from '../api/contracts';
 import type { ExcludedState } from '../api/contracts.gen';
 import { SettingsDialog } from './SchemaEditor';
 
-export function ShareStateDialog({ title, document, onClose, onShare }: {
+export function ShareStateDialog({ title, document, nodeIds, children, onClose, onShare }: {
   readonly title: string;
   readonly document: StudioDocument;
+  readonly nodeIds?: readonly string[];
+  readonly children?: ReactNode;
   readonly onClose: () => void;
   readonly onShare: (excluded: readonly ExcludedState[]) => Promise<void>;
 }) {
   const [excluded, setExcluded] = useState<readonly ExcludedState[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const selected = nodeIds === undefined ? null : new Set(nodeIds);
   const close = useCallback(() => { if (!pending) onClose(); }, [onClose, pending]);
   const enabled = (nodeId: string): boolean => {
     const node = document.nodes.find((item) => item.nodeId === nodeId);
@@ -31,13 +34,15 @@ export function ShareStateDialog({ title, document, onClose, onShare }: {
     }
   };
   return <SettingsDialog title={title} onClose={close}>
+    {children}
     <p>Select saved values to include. Field definitions and their defaults stay in the export.</p>
-    {document.nodes.map((node) => <fieldset key={node.nodeId}>
+    {document.nodes.filter((node) => selected === null || selected.has(node.nodeId)).map((node) => <fieldset key={node.nodeId}>
       <legend>{node.name}</legend>
       {(node.spec.stateFields ?? []).map((field) => {
         const input = node.ports.find((port) => port.kind === 'state' && port.direction === 'input' && port.runtimeName === field.name);
         const driven = enabled(node.nodeId) && document.edges.some((edge) => edge.kind === 'state' &&
-          edge.toNodeId === node.nodeId && edge.toPortId === input?.portId && enabled(edge.fromNodeId));
+          edge.toNodeId === node.nodeId && edge.toPortId === input?.portId && enabled(edge.fromNodeId) &&
+          (selected === null || selected.has(edge.fromNodeId)));
         const reason = field.access === 'ro' ? 'Read only' : field.persistent === false ? 'Runtime only' :
           field.publishable === false || field.redactOnPublish === true ? 'Private value' : driven ? 'Supplied by upstream node' :
           !(field.name in node.stateValues) ? 'No saved value' : null;

@@ -29,6 +29,8 @@ from ..local_integration import (
     LocalIntegrationService,
 )
 from ..models import DeployProjectRequest
+from ..assets import CaptureComponentRequest
+from ..component_models import InsertComponentRequest
 from ..project_repository import utc_now_text
 from .evidence import (
     arguments_hash,
@@ -118,6 +120,42 @@ class AgentModelTools:
         project_id = record.project_id
         previewed_patches: set[str] = set()
         proposals: dict[str, PatchRequest] = {}
+        previewed_components: set[str] = set()
+
+        async def component_capture(request_json: str) -> str:
+            """Save selection as a component. Typed JSON: expectedGraphRevision, expectedLayoutRevision, name, nodeIds, excludedStates."""
+            request = msgspec.json.decode(request_json, type=CaptureComponentRequest)
+            result = await self._execution.approved(record, tool_name="component.capture", arguments={"request": json_value(request)},
+                target_graph_revision=request.expected_graph_revision, target_layout_revision=request.expected_layout_revision,
+                operation=lambda: asyncio.to_thread(self._tools.capture_component, project_id, request))
+            return tool_text(result)
+
+        async def component_preview(asset_id: str, version: int) -> str:
+            """Preview a fixed component version, external hosts, ports and missing implementations; does not execute code."""
+            result = await self._execution.run(record, tool_name="component.preview", arguments={"assetId": asset_id, "version": version},
+                target_graph_revision=None, operation=lambda: asyncio.to_thread(self._tools.component_preview, asset_id, version))
+            return tool_text(result)
+
+        async def component_preview_insertion(request_json: str) -> str:
+            """Preview typed insertion JSON: assetId, version, requestId, expectedGraphRevision, expectedLayoutRevision, hostBindings, x, y."""
+            request = msgspec.json.decode(request_json, type=InsertComponentRequest)
+            result = await self._execution.run(record, tool_name="component.preview_insertion", arguments={"request": json_value(request)},
+                target_graph_revision=request.expected_graph_revision,
+                operation=lambda: asyncio.to_thread(self._tools.preview_component_insertion, project_id, request))
+            previewed_components.add(arguments_hash({"request": json_value(request)}))
+            return tool_text(result)
+
+        async def component_insert(request_json: str) -> str:
+            """Insert the exact component request previewed in this run, after human approval; never installs extensions or runs scripts."""
+            request = msgspec.json.decode(request_json, type=InsertComponentRequest)
+            fingerprint = arguments_hash({"request": json_value(request)})
+            if fingerprint not in previewed_components:
+                raise InvalidRequestError("component insertion must be previewed in this run before applying")
+            result = await self._execution.approved(record, tool_name="component.insert", arguments={"request": json_value(request)},
+                target_graph_revision=request.expected_graph_revision, target_layout_revision=request.expected_layout_revision,
+                operation=lambda: self._tools.insert_component(project_id, request))
+            previewed_components.discard(fingerprint)
+            return tool_text(result)
 
         async def catalog_read() -> str:
             """List installed service and operator IDs/labels. Use catalog_search and catalog_operator to inspect relevant nodes."""
@@ -451,6 +489,7 @@ class AgentModelTools:
             return tool_text(result)
 
         return (
+            component_capture, component_preview, component_preview_insertion, component_insert,
             extension_tools_list, extension_tool_run, extension_tool_job, extension_resources_list, extension_resource_read,
             skills_list, skill_read, catalog_read, catalog_search, catalog_operator, catalog_create_node,
             graph_read, graph_node, graph_preview_patch, graph_apply_patch,

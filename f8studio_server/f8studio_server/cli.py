@@ -88,6 +88,13 @@ def _parser() -> argparse.ArgumentParser:
     apply = subparsers.add_parser("apply-patch")
     apply.add_argument("project_id")
     apply.add_argument("path")
+    for command in ("capture-component", "preview-component-insertion", "insert-component"):
+        component = subparsers.add_parser(command)
+        component.add_argument("project_id")
+        component.add_argument("path", help="Typed request JSON file")
+    component_preview = subparsers.add_parser("component-preview")
+    component_preview.add_argument("asset_id")
+    component_preview.add_argument("version", type=int)
     validate = subparsers.add_parser("validate")
     validate.add_argument("project_id")
     deploy = subparsers.add_parser("deploy")
@@ -124,6 +131,14 @@ def _dispatch(client: StudioApiClient, args: argparse.Namespace) -> object:
         return client.preview_patch(args.project_id, _load_object(args.path))
     if args.command == "apply-patch":
         return client.apply_patch(args.project_id, _load_object(args.path))
+    if args.command == "capture-component":
+        return client.capture_component(args.project_id, _load_object(args.path))
+    if args.command == "component-preview":
+        return client.component_preview(args.asset_id, args.version)
+    if args.command == "preview-component-insertion":
+        return client.preview_component_insertion(args.project_id, _load_object(args.path))
+    if args.command == "insert-component":
+        return client.insert_component(args.project_id, _load_object(args.path))
     if args.command == "validate":
         project = _object(client.graph(args.project_id), label="project")
         document = _object(project.get("document"), label="project document")

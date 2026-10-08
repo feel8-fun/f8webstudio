@@ -281,13 +281,26 @@ export async function exportSharedProjectGraph(projectId: string, document: Proj
   return `${JSON.stringify(body, null, 2)}\n`;
 }
 
-export async function captureProjectComponent(projectId: string, document: ProjectRecord['document'], name: string, excludedStates: readonly ExcludedState[]): Promise<AssetRecord> {
+export async function captureProjectComponent(projectId: string, document: ProjectRecord['document'], name: string, excludedStates: readonly ExcludedState[], nodeIds?: readonly string[]): Promise<AssetRecord> {
   const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/components`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expectedGraphRevision: document.graphRevision, expectedLayoutRevision: document.layoutRevision, name, excludedStates }),
+    body: JSON.stringify({ expectedGraphRevision: document.graphRevision, expectedLayoutRevision: document.layoutRevision, name, excludedStates, nodeIds }),
   });
   if (!isObject(body) || typeof body.assetId !== 'string') throw new Error('Component does not match the asset contract');
   return body as unknown as AssetRecord;
+}
+
+export async function fetchComponentPreview(assetId: string, version: number, signal?: AbortSignal): Promise<import('./contracts.gen').ComponentPreview> {
+  const body = await requestJson(`/api/assets/${encodeURIComponent(assetId)}/versions/${version}/preview`, { signal });
+  if (!isObject(body) || !isStudioDocument(body.document) || !isObject(body.component) || !Array.isArray(body.issues)) throw new Error('Invalid component preview');
+  return body as unknown as import('./contracts.gen').ComponentPreview;
+}
+
+export async function insertProjectComponent(projectId: string, input: import('./contracts.gen').InsertComponentRequestInput): Promise<import('./contracts.gen').InsertComponentResult> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/components:insert`,
+    jsonRequest('POST /api/projects/{project_id}/components:insert', input));
+  if (!isObject(body) || !isObject(body.patch) || !isStudioDocument(body.patch.document) || !isObject(body.source)) throw new Error('Invalid component insertion result');
+  return body as unknown as import('./contracts.gen').InsertComponentResult;
 }
 
 export async function importProjectGraph(projectId: string, content: string, expected: Pick<ProjectRecord['document'], 'graphRevision' | 'layoutRevision'>): Promise<ProjectRecord> {

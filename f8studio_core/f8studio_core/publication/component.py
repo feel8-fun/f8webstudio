@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import msgspec
+from f8pysdk.specs import F8StateAccess, state_is_persistent
 
 from f8studio_core.graph.exchange import (
     EXCHANGE_VERSION, ExchangeMetadata, ExchangeService, GraphExchange, export_shared_graph, import_graph,
 )
-from f8studio_core.graph.models import GraphEdge, GraphNode, NodeLayout, OperatorNode, ServiceNode, StudioDocument
+from f8studio_core.graph.models import GraphEdge, GraphEdgeKind, GraphNode, NodeLayout, OperatorNode, ServiceNode, StudioDocument
 from f8studio_core.graph.state_policy import ExcludedState, upgrade_document
 from f8studio_core.graph.validation import validate_document
 
@@ -83,7 +84,8 @@ def capture_component(document: StudioDocument, *, node_ids: tuple[str, ...] | N
     # Re-evaluate publication state bindings using only retained edges. A cut upstream
     # connection must not discard the author's saved fallback configuration.
     retained = msgspec.structs.replace(document,
-        nodes=tuple(node for node in document.nodes if node.node_id in selected | external_host_ids),
+        nodes=tuple(msgspec.structs.replace(node, enabled=True, state_values={}) if node.node_id in external_host_ids else node
+                    for node in document.nodes if node.node_id in selected | external_host_ids),
         edges=tuple(edge for edge in document.edges if edge.from_node_id in selected and edge.to_node_id in selected),
         layout=tuple(item for item in document.layout if item.node_id in selected))
     exchange = msgspec.json.decode(export_shared_graph(retained, excluded_states=excluded_states), type=GraphExchange)
@@ -97,6 +99,12 @@ def capture_component(document: StudioDocument, *, node_ids: tuple[str, ...] | N
             continue
         node_id, port_id = ((edge.from_node_id, edge.from_port_id) if edge.from_node_id in selected else (edge.to_node_id, edge.to_port_id))
         port = next(port for port in nodes[node_id].ports if port.port_id == port_id)
+        if edge.kind is GraphEdgeKind.state and edge.to_node_id == node_id and port.state_spec is not None:
+            field = port.state_spec
+            instance = exchange.operators[node_id] if node_id in exchange.operators else exchange.services[node_id]
+            if (state_is_persistent(field) and field.access is not F8StateAccess.ro and field.valueRequired is True
+                    and field.name not in instance.state_values and isinstance(field.valueSchema.default, msgspec.UnsetType)):
+                raise ValueError(f"selection cuts required state input {node_id}.{field.name}; save an authored initial configuration or include its upstream node")
         if (node_id, port_id) not in endpoints:
             endpoints[(node_id, port_id)] = ComponentEndpoint(endpoint_id=f"endpoint_{len(endpoints)}",
                 node_id=node_id, port_id=port_id, direction=port.direction)

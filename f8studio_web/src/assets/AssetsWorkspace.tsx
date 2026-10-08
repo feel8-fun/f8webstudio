@@ -1,7 +1,7 @@
 import { ShareStateDialog } from "../graph/ShareStateDialog";
 import type { ExcludedState } from "../api/contracts.gen";
 import { Box, Camera, Download, Plus, Save, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   captureProjectComponent, createAsset,
@@ -10,6 +10,8 @@ import {
   fetchAsset,
   fetchAssets,
   fetchAssetVersions,
+  fetchComponentPreview,
+  insertProjectComponent,
   fetchProjects,
   fetchProjectVersions,
   fetchProject,
@@ -17,9 +19,12 @@ import {
   restoreProjectVersion,
   updateAsset,
 } from '../api/client';
-import type { AssetKind, AssetRecord, AssetSummary, AssetVersion, GraphEdge, GraphNode, JsonValue, NodeLayout, ProjectRecord, ProjectSummary, ProjectVersion } from '../api/contracts';
+import type { AssetKind, AssetRecord, AssetSummary, AssetVersion, JsonValue, ProjectRecord, ProjectSummary, ProjectVersion } from '../api/contracts';
+import type { ComponentPreview } from '../api/contracts.gen';
+import { GraphView } from '../graph/GraphView';
 
-const EMPTY_COMPONENT = { schemaVersion: 'f8studio-component/2', nodes: [], edges: [], layout: [] };
+const EMPTY_COMPONENT = { format: 'f8component', formatVersion: 1, definitions: { services: {}, operators: {} },
+  services: {}, operators: {}, connections: [], presentation: { layout: [], nodeOrder: [] }, hostBindings: [], endpoints: [] };
 const EMPTY_VARIANT = { schemaVersion: 'f8studio-variant/1', serviceClass: 'f8.pyengine', stateValues: {} };
 
 function downloadJson(filename: string, value: unknown): void {
@@ -46,6 +51,21 @@ export function AssetsWorkspace() {
   const [capturing, setCapturing] = useState(false);
   const closeCapture = useCallback(() => setCapturing(false), []);
   const [status, setStatus] = useState('Ready');
+  const [previewVersion, setPreviewVersion] = useState(1);
+  const [preview, setPreview] = useState<ComponentPreview | null>(null);
+  const [hostBindings, setHostBindings] = useState<Readonly<Record<string, string>>>({});
+  const insertionRequestId = useRef<string | null>(null);
+
+  useEffect(() => {
+    setPreview(null);
+    setHostBindings({});
+    if (selected?.kind !== 'component') return;
+    const controller = new AbortController();
+    void fetchComponentPreview(selected.assetId, previewVersion, controller.signal).then(setPreview,
+      (error: unknown) => { if (!controller.signal.aborted) setStatus(error instanceof Error ? error.message : 'Preview failed'); });
+    return () => controller.abort();
+  }, [selected?.assetId, selected?.kind, selected?.currentVersion, previewVersion]);
+  useEffect(() => { insertionRequestId.current = null; }, [selected?.assetId, previewVersion, projectId, hostBindings]);
 
   const reload = useCallback(async () => {
     const [nextAssets, nextProjects] = await Promise.all([fetchAssets(), fetchProjects()]);
@@ -69,6 +89,7 @@ export function AssetsWorkspace() {
     try {
       const [record, history] = await Promise.all([fetchAsset(assetId), fetchAssetVersions(assetId)]);
       setSelected(record);
+      setPreviewVersion(record.currentVersion);
       setVersions(history);
       setName(record.name);
       setDescription(record.description);
@@ -99,6 +120,7 @@ export function AssetsWorkspace() {
       const parsed = JSON.parse(content) as JsonValue;
       const updated = await updateAsset(selected.assetId, { name, description, tags: selected.tags, content: parsed });
       setSelected(updated);
+      setPreviewVersion(updated.currentVersion);
       setVersions(await fetchAssetVersions(updated.assetId));
       await reload();
       setStatus(`Saved version ${updated.currentVersion}`);
@@ -158,23 +180,16 @@ export function AssetsWorkspace() {
     if (selected === null || projectRecord === null) return;
     try {
       if (selected.kind === 'component') {
-        if (typeof selected.content !== 'object' || selected.content === null || Array.isArray(selected.content)) throw new Error('Invalid component content');
-        const fragment = selected.content as Record<string, JsonValue>;
-        if (!Array.isArray(fragment.nodes) || !Array.isArray(fragment.edges) || !Array.isArray(fragment.layout)) throw new Error('Component requires nodes, edges and layout');
-        const sourceNodes = fragment.nodes as unknown as readonly GraphNode[];
-        const sourceEdges = fragment.edges as unknown as readonly GraphEdge[];
-        const sourceLayout = fragment.layout as unknown as readonly NodeLayout[];
-        const ids = new Map(sourceNodes.map((node) => [node.nodeId, `${node.kind}_${crypto.randomUUID().replaceAll('-', '')}`]));
-        const nodes = sourceNodes.map((node): GraphNode => {
-          const nodeId = ids.get(node.nodeId) ?? node.nodeId;
-          return node.kind === 'service'
-            ? { ...node, nodeId, serviceId: nodeId }
-            : { ...node, nodeId, serviceId: ids.get(node.serviceId) ?? node.serviceId };
+        if (preview === null || preview.issues.length > 0) throw new Error('Resolve component requirements before insertion');
+        insertionRequestId.current ??= `component:${crypto.randomUUID()}`;
+        const result = await insertProjectComponent(projectRecord.projectId, {
+          requestId: insertionRequestId.current, expectedGraphRevision: projectRecord.document.graphRevision,
+          expectedLayoutRevision: projectRecord.document.layoutRevision, assetId: selected.assetId,
+          version: preview.version, hostBindings,
         });
-        const edges = sourceEdges.map((edge) => ({ ...edge, edgeId: `edge_${crypto.randomUUID().replaceAll('-', '')}`, fromNodeId: ids.get(edge.fromNodeId) ?? edge.fromNodeId, toNodeId: ids.get(edge.toNodeId) ?? edge.toNodeId }));
-        const layout = sourceLayout.map((item) => ({ ...item, nodeId: ids.get(item.nodeId) ?? item.nodeId, x: item.x + 40, y: item.y + 40 }));
-        const result = await patchProject(projectRecord.projectId, projectRecord.document, [{ op: 'insertFragment', nodes, edges, layout }]);
-        setProjectRecord({ ...projectRecord, document: result.document });
+        insertionRequestId.current = null;
+        setProjectRecord({ ...projectRecord, document: result.patch.document });
+        if (result.source.endpoints.length > 0) setStatus(`Inserted component; connect ${result.source.endpoints.length} exposed port(s) in Graph`);
       } else if (selected.kind === 'variant') {
         if (!targetNodeId) throw new Error('Select a target node');
         if (typeof selected.content !== 'object' || selected.content === null || Array.isArray(selected.content)) throw new Error('Invalid variant content');
@@ -185,9 +200,9 @@ export function AssetsWorkspace() {
         const result = await patchProject(projectRecord.projectId, projectRecord.document, operations);
         setProjectRecord({ ...projectRecord, document: result.document });
       }
-      setStatus(`Applied ${selected.kind} to project`);
+      if (selected.kind !== 'component' || preview?.component.endpoints.length === 0) setStatus(`Applied ${selected.kind} to project`);
     } catch (error: unknown) { setStatus(error instanceof Error ? error.message : 'Asset apply failed'); }
-  }, [projectRecord, selected, targetNodeId]);
+  }, [projectRecord, selected, targetNodeId, preview, hostBindings]);
 
   return (
     <section className="assets-workspace" aria-label="Assets and versions">
@@ -223,11 +238,25 @@ export function AssetsWorkspace() {
             <button className="icon-button bordered" type="button" aria-label="Export asset" title="Export asset" onClick={() => downloadJson(`${selected.name}.json`, { schemaVersion: 'f8studio-asset/1', asset: selected, versions })}><Download size={16} /></button>
             <button className="icon-button bordered danger" type="button" aria-label="Delete asset" title="Delete asset" onClick={() => void removeAsset()}><Trash2 size={16} /></button>
             <button className="command-button primary" type="button" onClick={() => void save()}><Save size={15} />Save version</button>
-            <button className="command-button" type="button" disabled={projectRecord === null} onClick={() => void applyAsset()}>Apply</button>
+            <button className="command-button" type="button" disabled={projectRecord === null || (selected.kind === 'component' &&
+              (preview === null || preview.component.presentation.nodeOrder.length === 0 || preview.issues.length > 0 || preview.component.hostBindings.some((binding) => !hostBindings[binding.bindingId])))} onClick={() => void applyAsset()}>Apply</button>
           </div>
           <label className="field-stack">Description<input className="plain-input" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+          {preview !== null && <section aria-label="Component preview">
+            <GraphView document={preview.document} readonly />
+            {preview.issues.map((issue, index) => <p role="alert" key={`${issue.nodeId}:${index}`}>{issue.message}</p>)}
+            {preview.component.hostBindings.map((binding) => <label className="field-stack" key={binding.bindingId}>
+              Host for {binding.serviceClass}<select aria-label={`Host for ${binding.bindingId}`} value={hostBindings[binding.bindingId] ?? ''}
+                onChange={(event) => setHostBindings((previous) => ({ ...previous, [binding.bindingId]: event.target.value }))}>
+                <option value="">Choose an existing service</option>
+                {projectRecord?.document.nodes.filter((node) => node.kind === 'service' && node.serviceClass === binding.serviceClass)
+                  .map((node) => <option key={node.nodeId} value={node.nodeId}>{node.name}</option>)}
+              </select>
+            </label>)}
+            {preview.component.endpoints.length > 0 && <p>Connect these exposed ports after insertion: {preview.component.endpoints.map((endpoint) => `${endpoint.nodeId}/${endpoint.portId}`).join(', ')}</p>}
+          </section>}
           <label className="field-stack asset-json">Typed JSON content<textarea value={content} onChange={(event) => setContent(event.target.value)} spellCheck={false} /></label>
-          <div className="asset-version-strip">{versions.map((version) => <button type="button" key={version.version} onClick={() => setContent(JSON.stringify(version.content, null, 2))}>v{version.version}<small>{new Date(version.createdAt).toLocaleString()}</small></button>)}</div>
+          <div className="asset-version-strip">{versions.map((version) => <button type="button" key={version.version} onClick={() => { setPreviewVersion(version.version); setContent(JSON.stringify(version.content, null, 2)); }}>v{version.version}<small>{new Date(version.createdAt).toLocaleString()}</small></button>)}</div>
         </>}
       </div>
     </section>

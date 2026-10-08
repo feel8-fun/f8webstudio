@@ -4,6 +4,7 @@ from f8studio_server.errors import InvalidRequestError, NotFoundError
 
 import json
 import sqlite3
+import msgspec
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import cast
 from f8studio_core.graph import PatchResult, StudioDocument, decode_document, encode_document
 
 from .models import ProjectRecord, ProjectSummary
+from .component_models import ComponentSource
 
 
 SCHEMA_VERSION = 1
@@ -86,6 +88,14 @@ class ProjectRepository:
                 );
                 CREATE INDEX IF NOT EXISTS processed_requests_created
                     ON processed_requests(project_id, created_at DESC);
+                CREATE TABLE IF NOT EXISTS component_insertions (
+                    project_id TEXT NOT NULL,
+                    request_id TEXT NOT NULL,
+                    source BLOB NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (project_id, request_id),
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                );
                 """
             )
             row = connection.execute("SELECT value FROM metadata WHERE key = 'schema_version'").fetchone()
@@ -292,6 +302,7 @@ class ProjectRepository:
         action: str,
         fingerprint: str,
         result: PatchResult,
+        component_source: ComponentSource | None = None,
     ) -> None:
         document = result.document
         document_bytes = encode_document(document)
@@ -347,6 +358,17 @@ class ProjectRepository:
                 """,
                 (project_id, project_id, self._request_history_limit),
             )
+            if component_source is not None:
+                connection.execute("INSERT INTO component_insertions(project_id, request_id, source, created_at) VALUES (?, ?, ?, ?)",
+                                   (project_id, result.request_id, msgspec.json.encode(component_source), timestamp))
+
+    def component_source(self, project_id: str, request_id: str) -> ComponentSource:
+        with self._connect() as connection:
+            row = connection.execute("SELECT source FROM component_insertions WHERE project_id = ? AND request_id = ?",
+                                     (project_id, request_id)).fetchone()
+        if row is None:
+            raise NotFoundError(f"component insertion source not found: {project_id}/{request_id}")
+        return msgspec.json.decode(_bytes(row[0]), type=ComponentSource)
 
 
 __all__ = ["ProjectRepository", "StoredRequest", "utc_now_text"]

@@ -31,6 +31,7 @@ from f8studio_core.graph.state_policy import apply_installed_state_policy
 
 from .models import CreateProjectRequest, ProjectRecord, ProjectSummary, UpdateProjectRequest
 from .project_repository import ProjectRepository, StoredRequest, utc_now_text
+from .component_models import ComponentSource, InsertComponentRequest, InsertComponentResult
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,19 @@ class ProjectService:
     def patch(self, project_id: str, request: PatchRequest) -> ProjectMutationResult:
         return self._mutate(project_id, action="patch", request=request)
 
+    def replay_component_insertion(self, project_id: str, request: InsertComponentRequest) -> InsertComponentResult | None:
+        with self._lock:
+            stored = self._repository.lookup_request(project_id, request.request_id)
+            if stored is None:
+                return None
+            result = self._stored_result(stored, action="insert_component", fingerprint=_request_fingerprint("insert_component", request))
+            return InsertComponentResult(patch=result, source=self._repository.component_source(project_id, request.request_id))
+
+    def insert_component(self, project_id: str, request: PatchRequest, *, source: ComponentSource,
+                         original: InsertComponentRequest) -> ProjectMutationResult:
+        return self._mutate(project_id, action="insert_component", request=request, component_source=source,
+                            fingerprint_request=original)
+
     def preview_patch(self, project_id: str, request: PatchRequest) -> PatchResult:
         with self._lock:
             document = self._store(project_id).snapshot()
@@ -173,9 +187,11 @@ class ProjectService:
         *,
         action: str,
         request: PatchRequest | HistoryRequest,
+        component_source: ComponentSource | None = None,
+        fingerprint_request: InsertComponentRequest | None = None,
     ) -> ProjectMutationResult:
         project_id = ensure_token(project_id, label="project_id")
-        fingerprint = _request_fingerprint(action, request)
+        fingerprint = _request_fingerprint(action, fingerprint_request if fingerprint_request is not None else request)
         with self._lock:
             stored = self._repository.lookup_request(project_id, request.request_id)
             if stored is not None:
@@ -191,9 +207,10 @@ class ProjectService:
                     action=action,
                     fingerprint=fingerprint,
                     result=result,
+                    component_source=component_source,
                 )
 
-            if action == "patch":
+            if action in ("patch", "insert_component"):
                 if not isinstance(request, PatchRequest):
                     raise TypeError("patch action requires PatchRequest")
                 result = store.apply_with_commit(request, before_commit=persist)

@@ -39,3 +39,16 @@ test('failed sharing leaves the choices available and displays the error', async
   expect(await screen.findByRole('alert')).toHaveTextContent('Project changed');
   expect(close).not.toHaveBeenCalled();
 });
+
+test('selection capture treats a cut upstream edge as an authored fallback and omits unselected nodes', () => {
+  const source = { ...document.nodes[0]!, nodeId: 'source', serviceId: 'source', name: 'Source' };
+  const target = { ...document.nodes[0]!, ports: [{ portId: 'gain-in', name: 'gain', runtimeName: 'gain',
+    kind: 'state' as const, direction: 'input' as const, dataSpec: null, stateSpec: document.nodes[0]!.spec.stateFields![0]! }] };
+  const connected = { ...document, nodes: [source, target], edges: [{ edgeId: 'upstream', kind: 'state' as const,
+    fromNodeId: 'source', fromPortId: 'gain-out', toNodeId: 'player', toPortId: 'gain-in', strategy: 'latest' as const,
+    queueSize: 16, timeoutMs: null }] };
+  render(<ShareStateDialog title="Capture selection" document={connected} nodeIds={['player']} onShare={vi.fn()} onClose={vi.fn()} />);
+  expect(screen.getByRole('checkbox', { name: 'Player.gain' })).toBeEnabled();
+  expect(screen.getByRole('checkbox', { name: 'Player.gain' })).toBeChecked();
+  expect(screen.queryByRole('checkbox', { name: 'Source.gain' })).not.toBeInTheDocument();
+});

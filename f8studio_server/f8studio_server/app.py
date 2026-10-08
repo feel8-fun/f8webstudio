@@ -507,19 +507,25 @@ def create_app(
 
     @app.post("/api/projects/{project_id}/components", status_code=201)
     async def capture_project_component(project_id: str, request: Request) -> F8JsonValue:
-        from .assets import ApplicationContent, AssetKind, CaptureComponentRequest, CreateAssetRequest
-        from f8studio_core.graph.state_policy import project_document_for_sharing
-
+        from .assets import CaptureComponentRequest
         payload = await _decode_body(request, CaptureComponentRequest)
-        document = await asyncio.to_thread(studio.projects.document, project_id)
-        if (document.graph_revision != payload.expected_graph_revision or
-                document.layout_revision != payload.expected_layout_revision):
-            raise RevisionConflictError("project changed before capture; refresh and retry")
-        shared = project_document_for_sharing(document, excluded_states=payload.excluded_states)
-        content = ApplicationContent(nodes=shared.nodes, edges=shared.edges, layout=shared.layout)
-        return _json_value(await asyncio.to_thread(studio.assets.create, CreateAssetRequest(
-            kind=AssetKind.component, name=payload.name, content=_json_value(content),
-        )))
+        return _json_value(await asyncio.to_thread(studio.tools.capture_component, project_id, payload))
+
+    @app.get("/api/assets/{asset_id}/versions/{version}/preview")
+    async def preview_component(asset_id: str, version: int) -> F8JsonValue:
+        return _json_value(await asyncio.to_thread(studio.tools.component_preview, asset_id, version))
+
+    @app.post("/api/projects/{project_id}/components:preview")
+    async def preview_component_insertion(project_id: str, request: Request) -> F8JsonValue:
+        from .component_models import InsertComponentRequest
+        payload = await _decode_body(request, InsertComponentRequest)
+        return _json_value(await asyncio.to_thread(studio.tools.preview_component_insertion, project_id, payload))
+
+    @app.post("/api/projects/{project_id}/components:insert")
+    async def insert_component(project_id: str, request: Request) -> F8JsonValue:
+        from .component_models import InsertComponentRequest
+        payload = await _decode_body(request, InsertComponentRequest)
+        return _json_value(await studio.tools.insert_component(project_id, payload))
 
     @app.post("/api/projects/{project_id}/graph/import")
     async def import_project_graph(project_id: str, request: Request,

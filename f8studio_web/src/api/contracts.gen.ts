@@ -514,6 +514,7 @@ export type CaptureComponentRequest = {
   readonly "expectedLayoutRevision": number;
   readonly "excludedStates": ReadonlyArray<ExcludedState>;
   readonly "name": string;
+  readonly "nodeIds": ReadonlyArray<string> | null;
 };
 
 export type CaptureComponentRequestInput = {
@@ -521,6 +522,7 @@ export type CaptureComponentRequestInput = {
   readonly "expectedLayoutRevision": number;
   readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
   readonly "name"?: string;
+  readonly "nodeIds"?: ReadonlyArray<string> | null;
 };
 
 export type CatalogSnapshot = {
@@ -585,6 +587,34 @@ export type ComponentEndpointInput = {
   readonly "direction": PortDirectionInput;
 };
 
+export type ComponentPreview = {
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "component": PortableComponent;
+  readonly "document": StudioDocument;
+  readonly "issues": ReadonlyArray<ComponentPreviewIssue>;
+};
+
+export type ComponentPreviewInput = {
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "component": PortableComponentInput;
+  readonly "document": StudioDocumentInput;
+  readonly "issues": ReadonlyArray<ComponentPreviewIssueInput>;
+};
+
+export type ComponentPreviewIssue = {
+  readonly "code": string;
+  readonly "nodeId": string;
+  readonly "message": string;
+};
+
+export type ComponentPreviewIssueInput = {
+  readonly "code": string;
+  readonly "nodeId": string;
+  readonly "message": string;
+};
+
 export type ComponentPublication = {
   readonly "kind": "component";
   readonly "schemaVersion": "f8publication/1";
@@ -599,6 +629,24 @@ export type ComponentPublicationInput = {
   readonly "manifest": PublicationManifestInput;
   readonly "content": PortableComponentInput;
   readonly "contentHash": string;
+};
+
+export type ComponentSource = {
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "nodeMap": Readonly<Record<string, string>>;
+  readonly "edgeMap": Readonly<Record<string, string>>;
+  readonly "hostBindings": Readonly<Record<string, string>>;
+  readonly "endpoints": ReadonlyArray<ComponentEndpoint>;
+};
+
+export type ComponentSourceInput = {
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "nodeMap": Readonly<Record<string, string>>;
+  readonly "edgeMap": Readonly<Record<string, string>>;
+  readonly "hostBindings": Readonly<Record<string, string>>;
+  readonly "endpoints"?: ReadonlyArray<ComponentEndpointInput>;
 };
 
 export type ConnectEdgeOp = {
@@ -2901,6 +2949,38 @@ export type InInput = {
   readonly "showOnNode"?: boolean;
 };
 
+export type InsertComponentRequest = {
+  readonly "requestId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "hostBindings": Readonly<Record<string, string>>;
+  readonly "x": number;
+  readonly "y": number;
+};
+
+export type InsertComponentRequestInput = {
+  readonly "requestId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "hostBindings"?: Readonly<Record<string, string>>;
+  readonly "x"?: number;
+  readonly "y"?: number;
+};
+
+export type InsertComponentResult = {
+  readonly "patch": PatchResult;
+  readonly "source": ComponentSource;
+};
+
+export type InsertComponentResultInput = {
+  readonly "patch": PatchResultInput;
+  readonly "source": ComponentSourceInput;
+};
+
 export type InsertFragmentOp = {
   readonly "op": "insertFragment";
   readonly "nodes": ReadonlyArray<ServiceNode | OperatorNode>;
@@ -4446,6 +4526,8 @@ export interface ApiRequests {
   readonly "POST /api/projects": CreateProjectRequestInput;
   readonly "POST /api/projects/{project_id}/graph/share": ShareGraphRequestInput;
   readonly "POST /api/projects/{project_id}/components": CaptureComponentRequestInput;
+  readonly "POST /api/projects/{project_id}/components:preview": InsertComponentRequestInput;
+  readonly "POST /api/projects/{project_id}/components:insert": InsertComponentRequestInput;
   readonly "POST /api/projects/{project_id}/graph/import": GraphExchangeInput;
   readonly "PUT /api/projects/{project_id}": UpdateProjectRequestInput;
   readonly "POST /api/projects/{project_id}/versions": CreateProjectVersionRequestInput;
@@ -4552,6 +4634,9 @@ export interface ApiResponses {
   readonly "GET /api/projects/{project_id}/graph/export": GraphExchange;
   readonly "POST /api/projects/{project_id}/graph/share": GraphExchange;
   readonly "POST /api/projects/{project_id}/components": AssetRecord;
+  readonly "GET /api/assets/{asset_id}/versions/{version}/preview": ComponentPreview;
+  readonly "POST /api/projects/{project_id}/components:preview": InsertComponentResult;
+  readonly "POST /api/projects/{project_id}/components:insert": InsertComponentResult;
   readonly "POST /api/projects/{project_id}/graph/import": ProjectRecord;
   readonly "PUT /api/projects/{project_id}": ProjectRecord;
   readonly "GET /api/projects/{project_id}/versions": ReadonlyArray<ProjectVersion>;

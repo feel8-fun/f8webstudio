@@ -1,6 +1,6 @@
-import { Handle, NodeResizer, Position, type NodeProps, type ResizeParams } from '@xyflow/react';
-import { Box, Boxes, ExternalLink } from 'lucide-react';
-import { createContext, lazy, Suspense, useContext, useEffect, useState } from 'react';
+import { NodeResizer, type NodeProps, type ResizeParams } from '@xyflow/react';
+import { ExternalLink } from 'lucide-react';
+import { createContext, lazy, Suspense, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import type { CommandSpec, GraphNode, JsonValue } from '../api/contracts';
 import { type PresentationOutput, usePresentationOutput } from '../presentation/PresentationStore';
@@ -10,10 +10,11 @@ import { PresentationWave } from '../presentation/PresentationWave';
 import { PresentationTrack } from '../presentation/PresentationTrack';
 import { hasExtensionNodeRendererClass } from '../extensions/registry';
 import { SkeletonOutputPreview } from '../three/SkeletonOutputPreview';
-import { isPatchHub, nodePortRows } from './portRows';
-import { PORT_ROW_HEIGHT, SERVICE_MIN_HEIGHT, SERVICE_WIDTH, type StudioFlowNode } from './projection';
+import { isPatchHub } from './portRows';
+import { SERVICE_MIN_HEIGHT, SERVICE_WIDTH, type StudioFlowNode } from './projection';
 import { StateFieldControl, stateOptionPoolField } from './StateFieldControl';
 import { useRuntimeNodeState } from './useRuntimeNodeState';
+import { StudioNodeSurface } from './StudioNodeSurface';
 
 export interface GraphNodeInteraction {
   readonly busy: boolean;
@@ -81,33 +82,8 @@ function InlineDataPreview({ nodeId, enabled, updating, renderer }: {
   </div>;
 }
 
-function PatchHubNodeView({ node, selected }: { readonly node: GraphNode; readonly selected: boolean }) {
-  const rows = nodePortRows(node);
-  return <article className={`studio-node studio-node-operator studio-node-patch-hub ${selected ? 'studio-node-selected' : ''}`} aria-label={node.name}>
-    <header className="node-drag-handle" title={node.name}><strong>{node.name}</strong></header>
-    <div className="node-ports">
-      {rows.map((row) => <div className="patch-hub-port-row" key={row.key} data-port-node={node.nodeId} data-port-id={row.input?.portId ?? row.output?.portId}>
-        <div className={`port-label port-${row.input?.kind ?? 'empty'}`}>
-          {row.input && <Handle id={row.input.portId} type="target" position={Position.Left} className={`port-handle port-handle-${row.input.kind}`} />}
-        </div>
-        <span className={`patch-hub-port-name port-${row.input?.kind ?? row.output?.kind ?? 'empty'}`} title={`${row.input?.kind ?? row.output?.kind}: ${row.input?.name ?? row.output?.name}`}>
-          {row.input?.name ?? row.output?.name}
-        </span>
-        <div className={`port-label port-output port-${row.output?.kind ?? 'empty'}`}>
-          {row.output && <Handle id={row.output.portId} type="source" position={Position.Right} className={`port-handle port-handle-${row.output.kind}`} />}
-        </div>
-      </div>)}
-    </div>
-  </article>;
-}
-
 export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
   const node = data.graphNode;
-  const execLabel = (runtimeName: string, direction: 'input' | 'output'): string | undefined => {
-    if (node.kind !== 'operator') return undefined;
-    const ports = direction === 'input' ? node.spec.execInPorts : node.spec.execOutPorts;
-    return ports?.find((port) => port.name === runtimeName)?.label;
-  };
   const showsVideoPreview = node.kind === 'operator' &&
     (node.operatorClass === 'f8.viz.video' || node.spec.rendererClass === 'viz_video');
   const showsAudioPreview = node.kind === 'operator' &&
@@ -129,62 +105,26 @@ export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
     ((showsWavePreview || showsTextPreview) && field.name === 'uiUpdate'))
     .flatMap((field) => [field.name, stateOptionPoolField(field)].filter((name): name is string => name !== null));
   const runtimeValues = useRuntimeNodeState(node, inlineNames);
-  if (isPatchHub(node)) return <PatchHubNodeView node={node} selected={selected} />;
+  if (isPatchHub(node)) return <StudioNodeSurface node={node} selected={selected} childCount={data.childCount} />;
   const updatesEnabled = runtimeValues.uiUpdate?.found === true
     ? runtimeValues.uiUpdate.value !== false : node.stateValues.uiUpdate !== false;
-  const rows = nodePortRows(node);
-  const visibleRows = rows.length === 0 ? [{ key: 'empty' }] : rows;
-  const portRows = <div className="node-ports" style={{ gridTemplateRows: `repeat(${visibleRows.length}, ${PORT_ROW_HEIGHT}px)` }}>
-    {visibleRows.map((row) => {
-      const input = row.input;
-      const output = row.output;
-      const sharedStateLabel = input?.kind === 'state' && output?.kind === 'state' &&
-        input.runtimeName === output.runtimeName;
-      const stateRuntimeName = input?.kind === 'state' && (output === undefined || sharedStateLabel)
-        ? input.runtimeName : null;
-      const commandName = input?.kind === 'command' ? input.name : output?.kind === 'command' ? output.name : null;
-      const command = commandName === null ? undefined : (node.spec.commands ?? []).find((item) => item.name === commandName);
-      const inlineField = stateRuntimeName === null ? undefined :
-        (node.spec.stateFields ?? []).find((field) => field.name === stateRuntimeName && field.showOnNode === true);
-      const inputOnlyStateControl = inlineField?.access === 'wo' && output === undefined;
-      const connected = inlineField === undefined ? false :
-        interaction?.connectedStateInputs.has(`${node.nodeId}:${inlineField.name}`) ?? false;
-      return (
-        <div className={`port-row ${sharedStateLabel || inputOnlyStateControl ? 'port-row-shared-state' : ''} ${inputOnlyStateControl ? 'port-row-input-state-control' : ''} ${commandName !== null ? 'port-row-command' : ''}`} key={row.key}>
-          <div className={`port-label port-${input?.kind ?? 'empty'}`}>
-            {input !== undefined && <>
-              <Handle id={input.portId} type="target" position={Position.Left} className={`port-handle port-handle-${input.kind}`} />
-              {commandName === null && <span title={`${input.kind} input`}>{inputOnlyStateControl ? inlineField.label ?? input.name : input.kind === 'exec' ? execLabel(input.runtimeName, 'input') || input.name : input.name}</span>}
-            </>}
-          </div>
-          <div className="port-control">
-            {commandName !== null && (command === undefined
-              ? <span className="port-command-name">{commandName}</span>
-              : <button type="button" className="port-command-button nodrag nowheel"
-                title={command.description ?? `Run ${command.name}`}
-                disabled={!node.enabled || interaction?.busy !== false || interaction.pendingCommands.has(`${node.nodeId}:${command.name}`)}
-                onClick={() => interaction?.openCommand(node, command)}>{command.name}</button>)}
-            {inlineField !== undefined && interaction !== null && <StateFieldControl
-              node={node}
-              field={inlineField}
-              compact
-              connected={connected}
-              disabled={interaction.busy}
-              runtimeValue={runtimeValues[inlineField.name]}
-              runtimeValues={runtimeValues}
-              onCommit={(value) => interaction.setState(node.nodeId, inlineField.name, value)}
-            />}
-          </div>
-          <div className={`port-label port-output port-${output?.kind ?? 'empty'}`}>
-            {output !== undefined && <>
-              {!sharedStateLabel && commandName === null && <span title={`${output.kind} output`}>{output.kind === 'exec' ? execLabel(output.runtimeName, 'output') || output.name : output.name}</span>}
-              <Handle id={output.portId} type="source" position={Position.Right} className={`port-handle port-handle-${output.kind}`} />
-            </>}
-          </div>
-        </div>
-      );
-    })}
-  </div>;
+  const stateControls: Record<string, ReactNode> = {};
+  const commandControls: Record<string, ReactNode> = {};
+  if (interaction !== null) {
+    for (const field of node.spec.stateFields ?? []) {
+      if (field.showOnNode !== true) continue;
+      stateControls[field.name] = <StateFieldControl key={field.name} node={node} field={field} compact
+        connected={interaction.connectedStateInputs.has(`${node.nodeId}:${field.name}`)} disabled={interaction.busy}
+        runtimeValue={runtimeValues[field.name]} runtimeValues={runtimeValues}
+        onCommit={(value) => interaction.setState(node.nodeId, field.name, value)} />;
+    }
+    for (const command of node.spec.commands ?? []) {
+      commandControls[command.name] = <button type="button" className="port-command-button nodrag nowheel"
+        title={command.description ?? `Run ${command.name}`}
+        disabled={!node.enabled || interaction.busy || interaction.pendingCommands.has(`${node.nodeId}:${command.name}`)}
+        onClick={() => interaction.openCommand(node, command)}>{command.name}</button>;
+    }
+  }
 
   return <>
     {node.kind === 'service' && data.childCount > 0 && <NodeResizer
@@ -195,18 +135,10 @@ export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
       lineClassName="service-resize-line"
       onResizeEnd={(_event, bounds) => interaction?.resizeService(node.nodeId, bounds)}
     />}
-    <article className={`studio-node studio-node-${node.kind} ${node.kind === 'service' && data.childCount === 0 ? 'studio-node-service-compact' : ''} ${selected ? 'studio-node-selected' : ''}`}>
-      <header className="node-drag-handle">
-        {node.kind === 'service' ? <Boxes size={15} /> : <Box size={15} />}
-        <div>
-          <strong>{node.name}</strong>
-          <span>{node.kind === 'service' ? node.serviceClass : node.operatorClass}</span>
-        </div>
-        {hasOutputView && <button type="button" className="node-view-button nodrag" title="Open output view" aria-label={`Open ${node.name} output view`}
-          onClick={() => interaction?.showOutput(node.nodeId)}><ExternalLink size={13} /></button>}
-        {node.kind === 'service' && data.childCount > 0 && <span className="service-child-count">{data.childCount} ops</span>}
-        {!node.enabled && <span className="node-disabled">Off</span>}
-      </header>
+    <StudioNodeSurface node={node} selected={selected} childCount={data.childCount}
+      stateControls={stateControls} commandControls={commandControls}
+      outputAction={hasOutputView && <button type="button" className="node-view-button nodrag" title="Open output view" aria-label={`Open ${node.name} output view`}
+        onClick={() => interaction?.showOutput(node.nodeId)}><ExternalLink size={13} /></button>}>
       {showsVideoPreview && <InlineVideoPreview nodeId={node.nodeId} enabled={node.enabled} />}
       {showsAudioPreview && <InlineAudioPreview nodeId={node.nodeId} enabled={node.enabled} />}
       {showsWavePreview && <InlineDataPreview nodeId={node.nodeId} enabled={node.enabled} updating={updatesEnabled} renderer="wave" />}
@@ -214,7 +146,6 @@ export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
       {showsTrackPreview && <InlineDataPreview nodeId={node.nodeId} enabled={node.enabled} updating renderer="track" />}
       {showsTCodePreview && <InlineTCodePreview nodeId={node.nodeId} enabled={node.enabled} model={node.stateValues.model} />}
       {isThreeD && <SkeletonOutputPreview nodeId={node.nodeId} enabled={node.enabled} className="studio-node-inline-three nodrag nowheel" />}
-      {portRows}
-    </article>
+    </StudioNodeSurface>
   </>;
 }

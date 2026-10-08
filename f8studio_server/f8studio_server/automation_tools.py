@@ -6,7 +6,11 @@ from typing import cast
 
 import msgspec
 from f8pysdk.specs import F8JsonValue, F8StateAccess, state_is_persistent
-from f8studio_core.graph import HistoryRequest, PatchRequest, PatchResult, SetNodeStateOp, StudioDocument
+from f8studio_core.graph import HistoryRequest, PatchRequest, PatchResult, RevisionConflictError, SetNodeStateOp, StudioDocument
+from f8studio_core.graph.spec_edit import validate_spec_snapshot
+from f8studio_core.graph.models import OperatorNode
+from f8studio_core.publication import capture_component, component_document, decode_component
+from f8studio_core.publication.insertion import prepare_component_insertion
 
 from .catalog import CatalogService, CatalogSnapshot
 from .jobs import DeployCoordinator
@@ -16,6 +20,9 @@ from .projects import ProjectService
 from .runtime import RuntimeGateway
 from .runtime_sync import service_was_deployed
 from .project_commits import ProjectCommits
+from .assets import AssetKind, AssetRecord, AssetRepository, CaptureComponentRequest, CreateAssetRequest
+from .component_models import ComponentPreview, ComponentPreviewIssue, ComponentSource, InsertComponentRequest, InsertComponentResult
+from .errors import InvalidRequestError
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,7 @@ class StudioAutomationTools:
         monitors: RuntimeMonitorStore,
         commits: ProjectCommits,
         runtime: RuntimeGateway,
+        assets: AssetRepository,
     ) -> None:
         self._catalog = catalog
         self._projects = projects
@@ -43,6 +51,74 @@ class StudioAutomationTools:
         self._monitors = monitors
         self._commits = commits
         self._runtime = runtime
+        self._assets = assets
+
+    def capture_component(self, project_id: str, request: CaptureComponentRequest) -> AssetRecord:
+        document = self._projects.document(project_id)
+        if (document.graph_revision, document.layout_revision) != (request.expected_graph_revision, request.expected_layout_revision):
+            raise RevisionConflictError("project changed before component capture; refresh and retry")
+        try:
+            component = capture_component(document, node_ids=request.node_ids, excluded_states=request.excluded_states)
+        except ValueError as exc:
+            raise InvalidRequestError(f"cannot capture component: {exc}") from exc
+        return self._assets.create(CreateAssetRequest(kind=AssetKind.component, name=request.name, content=_json_value(component)))
+
+    def component_preview(self, asset_id: str, version: int) -> ComponentPreview:
+        if self._assets.kind(asset_id) is not AssetKind.component:
+            raise InvalidRequestError("asset must be a component")
+        content = self._assets.version(asset_id, version).content
+        try:
+            component = decode_component(msgspec.json.encode(content))
+        except ValueError as exc:
+            raise InvalidRequestError(f"invalid component content: {exc}") from exc
+        document = component_document(component)
+        issues: list[ComponentPreviewIssue] = []
+        for node in document.nodes:
+            try:
+                installed = self._catalog.spec_for_node(node)
+            except KeyError:
+                issues.append(ComponentPreviewIssue(code="missing_definition", node_id=node.node_id,
+                    message=f"Install the extension defining {node.service_class}/{node.operator_class if isinstance(node, OperatorNode) else 'service'} before insertion; preview uses embedded definitions."))
+                continue
+            try:
+                validate_spec_snapshot(installed, node.spec)
+            except ValueError as exc:
+                issues.append(ComponentPreviewIssue(code="incompatible_definition", node_id=node.node_id, message=str(exc)))
+        return ComponentPreview(asset_id=asset_id, version=version, component=component, document=document, issues=tuple(issues))
+
+    def _prepare_component(self, project_id: str, request: InsertComponentRequest) -> tuple[PatchRequest, ComponentSource]:
+        preview = self.component_preview(request.asset_id, request.version)
+        if not preview.component.presentation.node_order:
+            raise InvalidRequestError("component has no template nodes to insert")
+        if preview.issues:
+            raise InvalidRequestError("; ".join(issue.message for issue in preview.issues))
+        document = self._projects.document(project_id)
+        if (document.graph_revision, document.layout_revision) != (request.expected_graph_revision, request.expected_layout_revision):
+            raise RevisionConflictError("project changed before component insertion; refresh and retry")
+        try:
+            insertion = prepare_component_insertion(preview.component, document, request_id=request.request_id,
+                host_bindings=request.host_bindings, x=request.x, y=request.y)
+        except ValueError as exc:
+            raise InvalidRequestError(f"cannot insert component: {exc}") from exc
+        source = ComponentSource(asset_id=request.asset_id, version=request.version, node_map=insertion.node_map,
+            edge_map=insertion.edge_map, host_bindings=insertion.host_bindings, endpoints=insertion.endpoints)
+        patch = PatchRequest(request_id=request.request_id, expected_graph_revision=request.expected_graph_revision,
+            expected_layout_revision=request.expected_layout_revision, operations=(insertion.fragment,))
+        return patch, source
+
+    def preview_component_insertion(self, project_id: str, request: InsertComponentRequest) -> InsertComponentResult:
+        patch, source = self._prepare_component(project_id, request)
+        return InsertComponentResult(patch=self._projects.preview_patch(project_id, patch), source=source)
+
+    async def insert_component(self, project_id: str, request: InsertComponentRequest) -> InsertComponentResult:
+        async with self._commits.lock(project_id):
+            replay = await asyncio.to_thread(self._projects.replay_component_insertion, project_id, request)
+            if replay is not None:
+                return replay
+            patch, source = await asyncio.to_thread(self._prepare_component, project_id, request)
+            mutation = await asyncio.to_thread(self._projects.insert_component, project_id, patch, source=source, original=request)
+            result = mutation.result if mutation.replayed else await self._commits.publish(project_id, mutation.result)
+            return InsertComponentResult(patch=result, source=source)
 
     def catalog(self) -> CatalogSnapshot:
         return self._catalog.snapshot()

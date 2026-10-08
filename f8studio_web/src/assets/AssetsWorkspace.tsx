@@ -1,8 +1,10 @@
+import { ShareStateDialog } from "../graph/ShareStateDialog";
+import type { ExcludedState } from "../api/contracts.gen";
 import { Box, Camera, Download, Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import {
-  createAsset,
+  captureProjectComponent, createAsset,
   createProjectVersion,
   deleteAsset,
   fetchAsset,
@@ -17,7 +19,7 @@ import {
 } from '../api/client';
 import type { AssetKind, AssetRecord, AssetSummary, AssetVersion, GraphEdge, GraphNode, JsonValue, NodeLayout, ProjectRecord, ProjectSummary, ProjectVersion } from '../api/contracts';
 
-const EMPTY_COMPONENT = { schemaVersion: 'f8studio-component/1', nodes: [], edges: [], layout: [] };
+const EMPTY_COMPONENT = { schemaVersion: 'f8studio-component/2', nodes: [], edges: [], layout: [] };
 const EMPTY_VARIANT = { schemaVersion: 'f8studio-variant/1', serviceClass: 'f8.pyengine', stateValues: {} };
 
 function downloadJson(filename: string, value: unknown): void {
@@ -41,6 +43,8 @@ export function AssetsWorkspace() {
   const [projectVersions, setProjectVersions] = useState<readonly ProjectVersion[]>([]);
   const [projectRecord, setProjectRecord] = useState<ProjectRecord | null>(null);
   const [targetNodeId, setTargetNodeId] = useState('');
+  const [capturing, setCapturing] = useState(false);
+  const closeCapture = useCallback(() => setCapturing(false), []);
   const [status, setStatus] = useState('Ready');
 
   const reload = useCallback(async () => {
@@ -141,23 +145,13 @@ export function AssetsWorkspace() {
     }
   }, [reload, selected]);
 
-  const captureProject = useCallback(async () => {
+  const captureProject = useCallback(async (excludedStates: readonly ExcludedState[]) => {
     if (projectRecord === null) return;
-    try {
-      const created = await createAsset({
-        kind: 'component',
-        name: `${projects.find((project) => project.projectId === projectId)?.name ?? 'Project'} component`,
-        content: JSON.parse(JSON.stringify({
-          schemaVersion: 'f8studio-component/1',
-          nodes: projectRecord.document.nodes,
-          edges: projectRecord.document.edges,
-          layout: projectRecord.document.layout,
-        })) as JsonValue,
-      });
-      await reload();
-      await selectAsset(created.assetId);
-      setStatus('Project graph captured as component');
-    } catch (error: unknown) { setStatus(error instanceof Error ? error.message : 'Component capture failed'); }
+    const created = await captureProjectComponent(projectRecord.projectId, projectRecord.document,
+      `${projects.find((project) => project.projectId === projectId)?.name ?? 'Project'} component`, excludedStates);
+    await reload();
+    await selectAsset(created.assetId);
+    setStatus('Project graph captured as component');
   }, [projectId, projectRecord, projects, reload, selectAsset]);
 
   const applyAsset = useCallback(async () => {
@@ -214,7 +208,8 @@ export function AssetsWorkspace() {
           {projects.map((project) => <option value={project.projectId} key={project.projectId}>{project.name}</option>)}
         </select>
         <button className="command-button" type="button" disabled={!projectId} onClick={() => void createSnapshot()}><Camera size={14} />Snapshot</button>
-        <button className="command-button" type="button" disabled={projectRecord === null} onClick={() => void captureProject()}><Box size={14} />Capture graph</button>
+        {capturing && projectRecord !== null && <ShareStateDialog key={projectRecord.projectId} title="Capture component" document={projectRecord.document} onClose={closeCapture} onShare={captureProject} />}
+        <button className="command-button" type="button" disabled={projectRecord === null} onClick={() => setCapturing(true)}><Box size={14} />Capture graph</button>
         <div className="project-version-list">
           {projectVersions.map((version) => <div key={version.versionId}><span>{version.name}<small>r{version.document.graphRevision}</small></span><button className="icon-button bordered" type="button" title="Restore version" aria-label={`Restore ${version.name}`} onClick={() => void restoreSnapshot(version.versionId)}><Download size={14} /></button></div>)}
         </div>

@@ -73,7 +73,7 @@ def test_graph_exchange_api_restores_as_new_revision(tmp_path: Path) -> None:
         assert patched.status_code == 200
         exported = client.get("/api/projects/project1/graph/export")
         assert exported.status_code == 200
-        assert exported.json()["formatVersion"] == 3
+        assert exported.json()["formatVersion"] == 4
         assert len(exported.json()["definitions"]["services"]) == 1
         assert "graphRevision" not in exported.json()
 
@@ -83,7 +83,7 @@ def test_graph_exchange_api_restores_as_new_revision(tmp_path: Path) -> None:
         assert restored.json()["document"]["layoutRevision"] == 1
 
         invalid = dict(exported.json())
-        invalid["formatVersion"] = 4
+        invalid["formatVersion"] = 999
         rejected = client.post("/api/projects/project1/graph/import", json=invalid)
         assert rejected.status_code == 422
         assert client.get("/api/projects/project1").json()["document"]["graphRevision"] == 2
@@ -1036,3 +1036,38 @@ def test_default_web_dist_uses_embedded_assets_when_installed(tmp_path: Path, mo
     package = tmp_path / "site-packages" / "f8studio_server"
     monkeypatch.setattr(app_module, "__file__", str(package / "app.py"))
     assert app_module.default_web_dist() == package / "web_dist"
+
+
+def test_sharing_api_exclusions_preserve_local_configuration_and_definition_defaults(tmp_path: Path) -> None:
+    app = create_app(web_dist=tmp_path, data_dir=tmp_path / "data", runtime=FakeRuntimeGateway(),
+                     service_roots=(), media_gateway=InProcessMediaGateway())
+    with TestClient(app) as client:
+        assert client.post("/api/projects", json={"projectId": "sharing", "name": "Sharing"}).status_code == 201
+        node = client.post("/api/catalog/nodes", json={"kind": "service", "nodeId": "studio", "serviceClass": "f8.pystudio"}).json()
+        assert node["spec"]["schemaVersion"] == "f8service/2"
+        response = client.post("/api/projects/sharing/patch", json={
+            "requestId": "create", "expectedGraphRevision": 0, "expectedLayoutRevision": 0,
+            "operations": [{"op": "createNode", "node": node}, {"op": "setNodeState", "nodeId": "studio", "field": "tickMs", "value": 250}],
+        })
+        assert response.status_code == 200
+        request = {"expectedGraphRevision": 1, "expectedLayoutRevision": 0,
+                   "excludedStates": [{"nodeId": "studio", "field": "tickMs"}]}
+        shared = client.post("/api/projects/sharing/graph/share", json=request)
+        assert shared.status_code == 200
+        exchange = shared.json()
+        assert exchange["formatVersion"] == 4
+        assert exchange["services"]["studio"]["stateValues"] == {}
+        definition = next(iter(exchange["definitions"]["services"].values()))
+        assert definition == node["spec"]
+        captured = client.post("/api/projects/sharing/components", json={**request, "name": "Component"})
+        assert captured.status_code == 201
+        assert captured.json()["content"]["schemaVersion"] == "f8studio-component/2"
+        assert captured.json()["content"]["nodes"][0]["stateValues"] == {}
+        backup = client.get("/api/projects/sharing/graph/export").json()
+        assert backup["services"]["studio"]["stateValues"] == {"tickMs": 250}
+        local = client.get("/api/projects/sharing").json()["document"]
+        assert local["graphRevision"] == 1
+        assert local["nodes"][0]["stateValues"] == {"tickMs": 250}
+        assert client.post("/api/projects/sharing/graph/share", json={**request, "expectedGraphRevision": 0}).status_code == 409
+        assert client.post("/api/projects/sharing/components", json={**request, "expectedGraphRevision": 0}).status_code == 409
+        assert client.post("/api/projects/sharing/graph/share", json={**request, "excludedStates": [{"nodeId": "studio", "field": "missing"}]}).status_code == 422

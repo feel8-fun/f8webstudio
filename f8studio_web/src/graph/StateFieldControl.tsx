@@ -63,6 +63,7 @@ export function StateFieldControl({
   const readOnly = field.access === 'ro';
   const configuredValue = fieldValue(node, field.name);
   const value = field.access !== 'wo' && runtimeValue?.found === true ? runtimeValue.value : configuredValue;
+  const triggerCounter = useRef({ key: `${node.nodeId}:${field.name}`, value: 0 });
   const [draft, setDraft] = useState(displayValue(value));
   const editing = useRef(false);
   useEffect(() => { if (!editing.current) setDraft(displayValue(value)); }, [value]);
@@ -128,7 +129,14 @@ export function StateFieldControl({
   }
   if (control === 'button') {
     const current = typeof value === 'number' ? value : 0;
-    return <button className={`${shellClass} state-trigger-button`} type="button" title={title} disabled={controlDisabled} onClick={() => commitChanged(current + 1)}>
+    return <button className={`${shellClass} state-trigger-button`} type="button" title={title} disabled={controlDisabled} onClick={() => {
+      if (field.persistent !== false) { commitChanged(current + 1); return; }
+      const key = `${node.nodeId}:${field.name}`;
+      const previous = triggerCounter.current.key === key ? triggerCounter.current.value : current;
+      const next = Math.max(previous, current) + 1;
+      triggerCounter.current = { key, value: next };
+      onCommit(next);
+    }}>
       {compact ? label : `Trigger ${label}`}
     </button>;
   }

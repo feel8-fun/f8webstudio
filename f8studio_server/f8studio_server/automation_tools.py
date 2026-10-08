@@ -5,7 +5,7 @@ import logging
 from typing import cast
 
 import msgspec
-from f8pysdk.specs import F8JsonValue
+from f8pysdk.specs import F8JsonValue, F8StateAccess, state_is_persistent
 from f8studio_core.graph import HistoryRequest, PatchRequest, PatchResult, SetNodeStateOp, StudioDocument
 
 from .catalog import CatalogService, CatalogSnapshot
@@ -74,7 +74,13 @@ class StudioAutomationTools:
                 errors: list[str] = []
                 for change in changes:
                     node = nodes.get(change.node_id)
-                    if node is None or not service_was_deployed(deployment, node.service_id):
+                    if node is None:
+                        continue
+                    fields = () if isinstance(node.spec.stateFields, msgspec.UnsetType) else node.spec.stateFields
+                    field = next((field for field in fields if field.name == change.field), None)
+                    if field is None or field.access == F8StateAccess.ro:
+                        continue
+                    if state_is_persistent(field) and not service_was_deployed(deployment, node.service_id):
                         continue
                     try:
                         response = await self._runtime.set_state(
@@ -90,7 +96,8 @@ class StudioAutomationTools:
                 result = msgspec.structs.replace(result, runtime_errors=("Runtime state synchronization cancelled",))
                 raise
             finally:
-                await self._commits.publish(project_id, result)
+                if result.graph_changed or result.layout_changed:
+                    await self._commits.publish(project_id, result)
             return result
 
     async def undo(self, project_id: str, request: HistoryRequest) -> PatchResult:

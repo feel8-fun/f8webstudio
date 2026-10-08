@@ -17,9 +17,12 @@ from f8pysdk.specs import (
     F8NullTypeSchema,
     F8NumberTypeSchema,
     F8StateAccess,
+    F8StateSpec,
     F8StringTypeSchema,
     F8UiControlKind,
     data_port_payload_kind,
+    normalize_state_policy,
+    state_is_persistent,
 )
 
 from .catalog import ports_for_spec
@@ -165,6 +168,10 @@ def _validate_node(node: GraphNode, service_nodes: dict[str, ServiceNode]) -> No
         for field in ([] if isinstance(node.spec.stateFields, msgspec.UnsetType) else node.spec.stateFields)
     }
     for field in state_fields.values():
+        try:
+            normalize_state_policy(field)
+        except ValueError as exc:
+            _fail("invalid_state_policy", f"{node.node_id}.{field.name}: {exc}")
         control = field.control
         if isinstance(control, msgspec.UnsetType):
             continue
@@ -186,11 +193,28 @@ def _validate_node(node: GraphNode, service_nodes: dict[str, ServiceNode]) -> No
             _fail("missing_state_field", f"state field not found: {node.node_id}.{field_name}")
         if field.access == F8StateAccess.ro:
             _fail("readonly_state", f"cannot persist read-only state: {node.node_id}.{field_name}")
+        if not state_is_persistent(field):
+            _fail("runtime_only_state", f"cannot persist runtime-only state: {node.node_id}.{field_name}")
         try:
             msgspec.json.encode(value)
         except (TypeError, ValueError) as exc:
             _fail("invalid_state_value", f"state value is not JSON compatible: {node.node_id}.{field_name}: {exc}")
         _validate_schema_value(value, field.valueSchema, f"{node.node_id}.{field_name}")
+
+
+def validate_state_update(node: GraphNode, name: str, value: F8JsonValue) -> F8StateSpec:
+    fields = () if isinstance(node.spec.stateFields, msgspec.UnsetType) else node.spec.stateFields
+    field = next((field for field in fields if field.name == name), None)
+    if field is None:
+        _fail("missing_state_field", f"state field not found: {node.node_id}.{name}")
+    if field.access == F8StateAccess.ro:
+        _fail("readonly_state", f"cannot write read-only state: {node.node_id}.{name}")
+    _validate_schema_value(value, field.valueSchema, f"{node.node_id}.{name}")
+    return field
+
+
+def validate_state_value(field: F8StateSpec, value: F8JsonValue, *, path: str) -> None:
+    _validate_schema_value(value, field.valueSchema, path)
 
 
 def _validate_edges(document: StudioDocument, nodes: dict[str, GraphNode]) -> None:

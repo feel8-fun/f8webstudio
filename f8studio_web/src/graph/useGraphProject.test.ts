@@ -15,7 +15,7 @@ vi.mock('../api/eventStream', () => ({ studioEvents: events }));
 
 const initial: ProjectRecord = {
   projectId: 'p', name: 'Project', description: '', createdAt: '', updatedAt: '',
-  document: { schemaVersion: 'f8studio-document/2', projectId: 'p', graphId: 'p', graphRevision: 0,
+  document: { schemaVersion: 'f8studio-document/3', projectId: 'p', graphId: 'p', graphRevision: 0,
     layoutRevision: 0, nodes: [], edges: [], layout: [] },
 };
 const reset = vi.fn();

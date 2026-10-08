@@ -12,7 +12,7 @@ from f8pysdk._specs.edit_policy import (
     can_delete_state_field,
     can_edit_existing,
 )
-from f8pysdk.specs import F8Command, F8DataPortSpec, F8ExecPortSpec, F8OperatorSpec, F8ServiceSpec, F8StateSpec
+from f8pysdk.specs import F8Command, F8DataPortSpec, F8ExecPortSpec, F8OperatorSpec, F8ServiceSpec, F8StateSpec, normalize_spec_policy
 
 Spec = F8ServiceSpec | F8OperatorSpec
 SpecItem = F8StateSpec | F8Command | F8DataPortSpec | F8ExecPortSpec
@@ -105,6 +105,8 @@ def _check_collection(
 
 
 def validate_spec_edit(previous: Spec, proposed: Spec) -> None:
+    previous = normalize_spec_policy(previous)
+    proposed = normalize_spec_policy(proposed)
     if type(previous) is not type(proposed):
         raise ValueError("node spec kind cannot change")
     old = cast(dict[str, object], msgspec.to_builtins(previous))
@@ -122,3 +124,22 @@ def validate_spec_edit(previous: Spec, proposed: Spec) -> None:
     if isinstance(previous, F8OperatorSpec) and isinstance(proposed, F8OperatorSpec):
         _check_collection(previous, "execInPorts", previous.execInPorts, proposed.execInPorts)
         _check_collection(previous, "execOutPorts", previous.execOutPorts, proposed.execOutPorts)
+
+
+def validate_spec_snapshot(installed: Spec, snapshot: Spec) -> None:
+    """Validate stored definitions and prevent weakening installed publication restrictions."""
+    installed = normalize_spec_policy(installed)
+    snapshot = normalize_spec_policy(snapshot)
+    if not isinstance(installed.stateFields, msgspec.UnsetType) and not isinstance(snapshot.stateFields, msgspec.UnsetType):
+        indexed = {field.name: field for field in installed.stateFields}
+        for field in snapshot.stateFields:
+            original = indexed.get(field.name)
+            if original is None:
+                continue
+            if original.persistent is False and field.persistent is not False:
+                raise ValueError(f"installed state must remain runtime only: {field.name}")
+            if original.publishable is False and field.publishable is not False:
+                raise ValueError(f"installed state value cannot be published: {field.name}")
+            if original.redactOnPublish is True and field.redactOnPublish is not True:
+                raise ValueError(f"installed state redaction cannot be removed: {field.name}")
+    validate_spec_edit(installed, snapshot)

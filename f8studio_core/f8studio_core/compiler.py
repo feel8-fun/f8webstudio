@@ -141,6 +141,8 @@ def _semantic_runtime_node(node: GraphNode) -> F8RuntimeNode:
             control=msgspec.UNSET,
             showOnNode=msgspec.UNSET,
             redactOnPublish=msgspec.UNSET,
+            persistent=msgspec.UNSET,
+            publishable=msgspec.UNSET,
             editorAssist=msgspec.UNSET,
             valueSchema=_semantic_value_schema(field.valueSchema),
         )
@@ -195,7 +197,8 @@ def _semantic_data_port(port: F8DataPortSpec) -> F8DataPortSpec:
 
 
 def _runtime_state_fields(node: GraphNode) -> list[F8StateSpec]:
-    base = _spec_state_fields(node.spec.stateFields)
+    base = [msgspec.structs.replace(field, persistent=msgspec.UNSET, publishable=msgspec.UNSET)
+            for field in _spec_state_fields(node.spec.stateFields)]
     commands = [] if isinstance(node.spec.commands, msgspec.UnsetType) else list(node.spec.commands)
     fields = [*base, *hidden_command_state_specs(commands)]
     if isinstance(node, ServiceNode):

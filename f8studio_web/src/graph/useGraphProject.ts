@@ -1,6 +1,7 @@
+import type { ExcludedState } from "../api/contracts.gen";
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { changeHistory, createProject, deleteProject, exportProjectGraph, fetchCatalog, fetchLatestDeployment, fetchProject, fetchProjects, importProjectGraph, patchProject, refreshCatalog } from '../api/client';
+import { changeHistory, createProject, deleteProject, exportProjectGraph, exportSharedProjectGraph, fetchCatalog, fetchLatestDeployment, fetchProject, fetchProjects, importProjectGraph, patchProject, refreshCatalog } from '../api/client';
 import { isStudioDocument } from '../api/contracts';
 import { studioEvents } from '../api/eventStream';
 
@@ -153,7 +154,7 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     if (operations.length === 0) return Promise.resolve();
     return mutateProject(project?.projectId ?? '', async (current) => {
       const result = await patchProject(current.projectId, current.document, operations);
-      if (result.runtimeErrors.length > 0) setError(`Saved to project, but runtime sync failed: ${result.runtimeErrors.join('; ')}`);
+      if (result.runtimeErrors.length > 0) setError(`${result.graphChanged ? 'Saved to project, but runtime sync failed' : 'Runtime state update failed'}: ${result.runtimeErrors.join('; ')}`);
       return { ...current, document: result.document };
     });
   }, [mutateProject, project?.projectId]);
@@ -235,19 +236,21 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     }
   }, [busy, mutateProject, project, reloadProject]);
 
-  const downloadGraph = useCallback(async () => {
+  const downloadGraph = useCallback(async (excludedStates?: readonly ExcludedState[]) => {
     if (project === null || busy) return;
     setError(null);
     try {
-      const content = await exportProjectGraph(project.projectId);
+      const content = excludedStates === undefined ? await exportProjectGraph(project.projectId) :
+        await exportSharedProjectGraph(project.projectId, project.document, excludedStates);
       const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${project.projectId}.f8graph.json`;
+      link.download = `${project.projectId}${excludedStates === undefined ? '' : '.shared'}.f8graph.json`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (reason) {
       setError(errorMessage(reason));
+      throw reason;
     }
   }, [busy, project]);
 

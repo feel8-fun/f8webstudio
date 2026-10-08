@@ -8,7 +8,7 @@ from threading import RLock
 import msgspec
 
 from f8pysdk.specs import F8JsonValue
-from f8pysdk.specs import F8OperatorSpec, F8ServiceSpec
+from f8pysdk.specs import F8OperatorSpec, F8ServiceSpec, state_is_persistent
 
 from .codec import canonical_json_bytes, clone_document
 from .catalog import can_refresh_installed_spec, replace_node_spec
@@ -36,8 +36,8 @@ from .models import (
     SetNodeStateOp,
     StudioDocument,
 )
-from .validation import validate_document
-from .spec_edit import validate_spec_edit
+from .validation import validate_document, validate_state_update
+from .spec_edit import validate_spec_edit, validate_spec_snapshot
 
 
 class GraphStoreError(RuntimeError):
@@ -169,7 +169,7 @@ def _check_trusted_spec(node: GraphNode, resolver: SpecResolver | None) -> None:
     if resolver is None:
         return
     try:
-        validate_spec_edit(resolver(node), node.spec)
+        validate_spec_snapshot(resolver(node), node.spec)
     except (KeyError, TypeError, ValueError) as exc:
         raise OperationTargetError(f"node spec differs from installed definition: {node.node_id}: {exc}") from exc
 
@@ -225,6 +225,9 @@ def _apply_operation(document: StudioDocument, operation: GraphOperation, resolv
         node = next((item for item in document.nodes if item.node_id == operation.node_id), None)
         if node is None:
             raise OperationTargetError(f"node not found: {operation.node_id}")
+        field = validate_state_update(node, operation.field, operation.value)
+        if not state_is_persistent(field):
+            return document
         values = dict(node.state_values)
         values[operation.field] = operation.value
         replacement: GraphNode

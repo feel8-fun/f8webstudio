@@ -20,7 +20,7 @@ from f8pysdk.generated import (
     F8StateSpec,
     F8StringTypeSchema,
 )
-from f8pysdk.specs import F8JsonValue
+from f8pysdk.specs import F8JsonValue, state_is_persistent
 from f8studio_core.graph import PortKind, PortDirection
 from f8studio_core.graph import GraphNode, PatchRequest, RevisionConflictError, SetNodeStateOp, StudioDocument
 
@@ -89,7 +89,8 @@ class StudioApplication:
         self.database = StudioDatabase(self.data_dir / "studio.sqlite3")
         project_repository = ProjectRepository(self.database)
         self.projects = ProjectService(project_repository, spec_resolver=self.catalog.spec_for_node)
-        self.assets = AssetRepository(self.database)
+        self._hotkey_locks: dict[tuple[str, str, str], asyncio.Lock] = {}
+        self.assets = AssetRepository(self.database, spec_resolver=self.catalog.spec_for_classes)
         self.editor = EditorSessionService(root=self.data_dir / "editor-sessions")
         self.local = LocalIntegrationService(
             database_path=project_repository.database_path,
@@ -187,12 +188,18 @@ class StudioApplication:
             raise InvalidRequestError("global hotkey target is driven by an upstream state connection")
 
     async def _activate_hotkey(self, binding: HotkeyBinding) -> None:
+        key = (binding.project_id, binding.node_id, binding.field)
+        lock = self._hotkey_locks.setdefault(key, asyncio.Lock())
+        async with lock:
+            await self._activate_hotkey_locked(binding)
+
+    async def _activate_hotkey_locked(self, binding: HotkeyBinding) -> None:
         result = None
         node: GraphNode | None = None
         next_value: F8JsonValue = None
         for _attempt in range(2):
             document, current_node, field = self._hotkey_target(binding)
-            next_value = self._next_hotkey_value(current_node, field)
+            next_value = await self._next_hotkey_value(current_node, field)
             request = PatchRequest(
                 request_id=f"hotkey:{binding.binding_id}:{uuid4().hex}",
                 expected_graph_revision=document.graph_revision,
@@ -210,7 +217,8 @@ class StudioApplication:
         if result.runtime_errors:
             logger.warning("global hotkey runtime state sync failed: %s", "; ".join(result.runtime_errors))
         deployment = await self.jobs.latest(binding.project_id)
-        if not service_was_deployed(deployment, node.service_id):
+        _, _, field = self._hotkey_target(binding)
+        if state_is_persistent(field) and not service_was_deployed(deployment, node.service_id):
             try:
                 response = await self.runtime.set_state(
                     node.service_id, node_id=node.node_id, field=binding.field, value=next_value,
@@ -232,14 +240,18 @@ class StudioApplication:
             raise NotFoundError(f"global hotkey state field not found: {binding.node_id}.{binding.field}")
         return document, node, field
 
-    def _next_hotkey_value(self, node: GraphNode, field: F8StateSpec) -> F8JsonValue:
+    async def _next_hotkey_value(self, node: GraphNode, field: F8StateSpec) -> F8JsonValue:
         current = node.state_values.get(field.name, self._schema_default(field))
+        if not state_is_persistent(field):
+            observed = await self.runtime.read_state(node.service_id, node_id=node.node_id, field=field.name)
+            if observed.found:
+                current = observed.value
         if self._state_control(field) == "button":
             if isinstance(field.valueSchema, F8IntegerTypeSchema):
                 return int(current) + 1 if isinstance(current, (int, float)) and not isinstance(current, bool) else 1
             if isinstance(field.valueSchema, F8NumberTypeSchema):
                 return float(current) + 1.0 if isinstance(current, (int, float)) and not isinstance(current, bool) else 1.0
-        choices = self._enum_values(field) or self._pool_values(node, field)
+        choices = self._enum_values(field) or await self._pool_values(node, field)
         if not choices:
             raise InvalidRequestError(f"global hotkey select field has no choices: {node.node_id}.{field.name}")
         try:
@@ -272,13 +284,15 @@ class StudioApplication:
             return None
         return cast(F8JsonValue, msgspec.to_builtins(value, str_keys=True))
 
-    @staticmethod
-    def _pool_values(node: GraphNode, field: F8StateSpec) -> list[F8JsonValue]:
+    async def _pool_values(self, node: GraphNode, field: F8StateSpec) -> list[F8JsonValue]:
         control = field.control
         if isinstance(control, msgspec.UnsetType) or isinstance(control.optionsFromState, msgspec.UnsetType):
             return []
         pool_name = control.optionsFromState
         raw_pool = node.state_values.get(pool_name)
+        observed = await self.runtime.read_state(node.service_id, node_id=node.node_id, field=pool_name)
+        if observed.found:
+            raw_pool = observed.value
         if raw_pool is None:
             state_fields = node.spec.stateFields
             fields = () if isinstance(state_fields, msgspec.UnsetType) else state_fields

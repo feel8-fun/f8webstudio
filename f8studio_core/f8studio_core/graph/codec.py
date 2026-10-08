@@ -5,6 +5,7 @@ import json
 import msgspec
 
 from .models import StudioDocument
+from .state_policy import upgrade_document
 from .validation import validate_document
 
 
@@ -21,6 +22,7 @@ def decode_document(payload: bytes | str) -> StudioDocument:
         document = _DOCUMENT_DECODER.decode(payload)
     except msgspec.DecodeError as exc:
         raise ValueError(f"invalid Studio document: {exc}") from exc
+    document = upgrade_document(document)
     validate_document(document)
     return document
 

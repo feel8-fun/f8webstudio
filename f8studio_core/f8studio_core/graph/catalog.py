@@ -14,6 +14,8 @@ from f8pysdk.specs import (
     F8ServiceSpec,
     F8StateAccess,
     F8StateSpec,
+    normalize_spec_policy,
+    state_is_persistent,
 )
 
 from .models import GraphNode, GraphPort, OperatorNode, PortDirection, PortKind, ServiceNode
@@ -26,7 +28,9 @@ def can_refresh_installed_spec(node: GraphNode, installed: F8ServiceSpec | F8Ope
     """Accept only catalog additions and presentation metadata changes to an old node snapshot."""
     if type(node.spec) is not type(installed):
         return False
-    previous = cast(dict[str, object], msgspec.to_builtins(node.spec))
+    old_normalized = normalize_spec_policy(node.spec)
+    installed = normalize_spec_policy(installed)
+    previous = cast(dict[str, object], msgspec.to_builtins(old_normalized))
     current = cast(dict[str, object], msgspec.to_builtins(installed))
     if previous == current:
         return False
@@ -35,7 +39,7 @@ def can_refresh_installed_spec(node: GraphNode, installed: F8ServiceSpec | F8Ope
         current.pop(key, None)
     if previous != current:
         return False
-    old_spec = cast(dict[str, object], msgspec.to_builtins(node.spec))
+    old_spec = cast(dict[str, object], msgspec.to_builtins(old_normalized))
     new_spec = cast(dict[str, object], msgspec.to_builtins(installed))
     for key in _SPEC_COLLECTIONS:
         old_items = old_spec.get(key, [])
@@ -58,11 +62,11 @@ def can_refresh_installed_spec(node: GraphNode, installed: F8ServiceSpec | F8Ope
 
 
 def _clone_service_spec(spec: F8ServiceSpec) -> F8ServiceSpec:
-    return msgspec.json.decode(msgspec.json.encode(spec), type=F8ServiceSpec)
+    return normalize_spec_policy(msgspec.json.decode(msgspec.json.encode(spec), type=F8ServiceSpec))
 
 
 def _clone_operator_spec(spec: F8OperatorSpec) -> F8OperatorSpec:
-    return msgspec.json.decode(msgspec.json.encode(spec), type=F8OperatorSpec)
+    return normalize_spec_policy(msgspec.json.decode(msgspec.json.encode(spec), type=F8OperatorSpec))
 
 
 def _data_ports(ports: list[F8DataPortSpec] | msgspec.UnsetType) -> list[F8DataPortSpec]:
@@ -217,7 +221,7 @@ def _state_values_after_rename(
     writable = {
         str(field.name)
         for field in _state_fields(spec.stateFields)
-        if field.access != F8StateAccess.ro
+        if state_is_persistent(field)
     }
     targets: dict[str, set[str]] = {}
     for port in node.ports:

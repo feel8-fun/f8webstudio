@@ -3,6 +3,7 @@ from __future__ import annotations
 from f8studio_server.errors import InvalidRequestError, NotFoundError
 
 import enum
+import logging
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,19 +14,26 @@ from .database import database_integer as _integer
 from .database import database_bytes as _bytes
 from .database import StudioDatabase
 from typing import cast
+from collections.abc import Callable
 from uuid import uuid4
 
 import msgspec
 
 from f8pysdk.f8_naming import ensure_token
-from f8pysdk.specs import F8JsonValue
+from f8pysdk.specs import F8JsonValue, F8ServiceSpec, F8OperatorSpec, state_is_publishable
 from f8studio_core.graph import GraphEdge, NodeLayout, OperatorNode, ServiceNode, StudioDocument, validate_document
-from f8studio_core.graph.models import GraphNode
+from f8studio_core.graph.models import DOCUMENT_SCHEMA_VERSION, GraphNode
+from f8studio_core.graph.state_policy import ExcludedState, apply_installed_state_policy, project_document_for_sharing, upgrade_document
+from f8studio_core.graph.codec import decode_document
+from f8studio_core.graph.spec_edit import validate_spec_snapshot
+from f8studio_core.graph.validation import validate_state_value
 
 
 ASSET_SCHEMA_VERSION = "f8studio-asset/1"
-COMPONENT_SCHEMA_VERSION = "f8studio-component/1"
+COMPONENT_SCHEMA_VERSION = "f8studio-component/2"
 VARIANT_SCHEMA_VERSION = "f8studio-variant/1"
+
+logger = logging.getLogger(__name__)
 
 
 class AssetKind(str, enum.Enum):
@@ -104,6 +112,16 @@ class CreateProjectVersionRequest(msgspec.Struct, frozen=True, kw_only=True, ren
     name: str = "Snapshot"
 
 
+class ShareGraphRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
+    expected_graph_revision: int
+    expected_layout_revision: int
+    excluded_states: tuple[ExcludedState, ...] = ()
+
+
+class CaptureComponentRequest(ShareGraphRequest, frozen=True, kw_only=True):
+    name: str = "Component"
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="milliseconds")
 
@@ -119,11 +137,15 @@ def _normalize_tags(tags: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(tag.strip() for tag in tags if tag.strip()))
 
 
-def _validate_content(kind: AssetKind, content: F8JsonValue) -> F8JsonValue:
+SpecResolver = Callable[[str, str | None], F8ServiceSpec | F8OperatorSpec]
+
+
+def _validate_content(kind: AssetKind, content: F8JsonValue, *,
+                      spec_resolver: SpecResolver | None = None) -> F8JsonValue:
     encoded = msgspec.json.encode(content)
     if kind is AssetKind.component:
         component = msgspec.json.decode(encoded, type=ApplicationContent)
-        if component.schema_version != COMPONENT_SCHEMA_VERSION:
+        if component.schema_version not in ("f8studio-component/1", COMPONENT_SCHEMA_VERSION):
             raise InvalidRequestError(f"unsupported component schema: {component.schema_version}")
         node_ids = {node.node_id for node in component.nodes}
         if len(node_ids) != len(component.nodes):
@@ -150,13 +172,53 @@ def _validate_content(kind: AssetKind, content: F8JsonValue) -> F8JsonValue:
                 raise InvalidRequestError("component operators must reference component services")
             if service_class != node.service_class:
                 raise InvalidRequestError("component operator and service classes must match")
-        return _json(component)
+        document = StudioDocument(
+            schema_version="f8studio-document/2" if component.schema_version == "f8studio-component/1" else DOCUMENT_SCHEMA_VERSION,
+            project_id="component", graph_id="component", graph_revision=0, layout_revision=0, nodes=component.nodes,
+            edges=component.edges, layout=component.layout,
+        )
+        document = upgrade_document(document)
+        if spec_resolver is not None:
+            normalized: list[GraphNode] = []
+            for node in document.nodes:
+                try:
+                    installed = spec_resolver(node.service_class, node.operator_class if isinstance(node, OperatorNode) else None)
+                except KeyError:
+                    logger.warning("Component definition unavailable for node=%s service_class=%s; using embedded publication policy",
+                                   node.node_id, node.service_class, exc_info=True)
+                    normalized.append(node)
+                    continue
+                node = apply_installed_state_policy(node, installed)
+                validate_spec_snapshot(installed, node.spec)
+                normalized.append(node)
+            document = msgspec.structs.replace(document, nodes=tuple(normalized))
+        shared = project_document_for_sharing(document)
+        return _json(ApplicationContent(nodes=shared.nodes, edges=shared.edges, layout=shared.layout))
     if kind is AssetKind.variant:
         variant = msgspec.json.decode(encoded, type=VariantContent)
         if variant.schema_version != VARIANT_SCHEMA_VERSION:
             raise InvalidRequestError(f"unsupported variant schema: {variant.schema_version}")
         if not variant.service_class.strip():
             raise InvalidRequestError("variant serviceClass must be non-empty")
+        if variant.state_values:
+            if spec_resolver is None:
+                raise InvalidRequestError("variant state values require an installed definition to check publication policy")
+            try:
+                spec = spec_resolver(variant.service_class, variant.operator_class)
+            except KeyError as exc:
+                raise InvalidRequestError(
+                    f"cannot check variant publication policy: install the extension defining {variant.service_class}/{variant.operator_class or 'service'}",
+                ) from exc
+            fields = () if isinstance(spec.stateFields, msgspec.UnsetType) else spec.stateFields
+            indexed = {field.name: field for field in fields}
+            unknown = set(variant.state_values) - set(indexed)
+            if unknown:
+                raise InvalidRequestError(f"unknown variant state fields: {', '.join(sorted(unknown))}")
+            variant = msgspec.structs.replace(variant, state_values={
+                name: value for name, value in variant.state_values.items() if state_is_publishable(indexed[name])
+            })
+            for name, value in variant.state_values.items():
+                validate_state_value(indexed[name], value, path=f"variant.{name}")
         return _json(variant)
     if not isinstance(content, dict):
         raise InvalidRequestError("modding recipe content must be an object")
@@ -167,7 +229,8 @@ def _validate_content(kind: AssetKind, content: F8JsonValue) -> F8JsonValue:
 
 
 class AssetRepository:
-    def __init__(self, database_path: Path | StudioDatabase) -> None:
+    def __init__(self, database_path: Path | StudioDatabase, *, spec_resolver: SpecResolver | None = None) -> None:
+        self._spec_resolver = spec_resolver
         self._database = database_path if isinstance(database_path, StudioDatabase) else StudioDatabase(database_path)
         self._database_path = self._database.path
         self._initialize()
@@ -227,7 +290,7 @@ class AssetRepository:
         name = request.name.strip()
         if not name:
             raise InvalidRequestError("asset name must be non-empty")
-        content = _validate_content(request.kind, request.content)
+        content = _validate_content(request.kind, request.content, spec_resolver=self._spec_resolver)
         timestamp = _now()
         tags = _normalize_tags(request.tags)
         try:
@@ -270,7 +333,7 @@ class AssetRepository:
             current_version=summary.current_version,
             created_at=summary.created_at,
             updated_at=summary.updated_at,
-            content=msgspec.json.decode(_bytes(row[8]), type=F8JsonValue),
+            content=_validate_content(summary.kind, msgspec.json.decode(_bytes(row[8]), type=F8JsonValue), spec_resolver=self._spec_resolver),
         )
 
     def update(self, asset_id: str, request: UpdateAssetRequest) -> AssetRecord:
@@ -287,7 +350,7 @@ class AssetRepository:
             ).fetchone()
             if current is None:
                 raise NotFoundError(f"asset not found: {asset_id}")
-            content = _validate_content(AssetKind(_text(current[0])), request.content)
+            content = _validate_content(AssetKind(_text(current[0])), request.content, spec_resolver=self._spec_resolver)
             version = _integer(current[1]) + 1
             connection.execute(
                 """UPDATE local_assets SET name = ?, description = ?, tags = ?,
@@ -308,7 +371,7 @@ class AssetRepository:
                 raise NotFoundError(f"asset not found: {asset_id}")
 
     def versions(self, asset_id: str) -> tuple[AssetVersion, ...]:
-        _ = self.get(asset_id)
+        asset = self.get(asset_id)
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT version, created_at, content FROM local_asset_versions WHERE asset_id = ? ORDER BY version DESC",
@@ -319,7 +382,7 @@ class AssetRepository:
                 asset_id=asset_id,
                 version=_integer(row[0]),
                 created_at=_text(row[1]),
-                content=msgspec.json.decode(_bytes(row[2]), type=F8JsonValue),
+                content=_validate_content(asset.kind, msgspec.json.decode(_bytes(row[2]), type=F8JsonValue), spec_resolver=self._spec_resolver),
             )
             for row in rows
         )
@@ -343,9 +406,9 @@ class AssetRepository:
             if version.asset_id != asset_id or version.version < 1:
                 raise InvalidRequestError("asset export version identity is invalid")
         normalized = tuple(
-            (version, _validate_content(asset.kind, version.content)) for version in versions
+            (version, _validate_content(asset.kind, version.content, spec_resolver=self._spec_resolver)) for version in versions
         )
-        if normalized[-1][1] != _validate_content(asset.kind, asset.content):
+        if normalized[-1][1] != _validate_content(asset.kind, asset.content, spec_resolver=self._spec_resolver):
             raise InvalidRequestError("asset current content does not match current version")
         try:
             with self._connect() as connection:
@@ -407,7 +470,7 @@ class AssetRepository:
                 project_id=project_id,
                 name=_text(row[1]),
                 created_at=_text(row[2]),
-                document=msgspec.json.decode(_bytes(row[3]), type=StudioDocument),
+                document=decode_document(_bytes(row[3])),
             )
             for row in rows
         )

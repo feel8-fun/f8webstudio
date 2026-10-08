@@ -1,3 +1,4 @@
+import type { ExcludedState } from "./contracts.gen";
 import type * as Wire from './contracts.gen';
 import {
   isAudioSessionAnswer,
@@ -265,10 +266,28 @@ export async function fetchProject(projectId: string, signal?: AbortSignal): Pro
 
 export async function exportProjectGraph(projectId: string): Promise<string> {
   const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/graph/export`);
-  if (!isObject(body) || body.format !== 'f8graph' || body.formatVersion !== 3) {
-    throw new Error('Graph export does not match f8graph/3');
+  if (!isObject(body) || body.format !== 'f8graph' || body.formatVersion !== 4) {
+    throw new Error('Graph export does not match f8graph/4');
   }
   return `${JSON.stringify(body, null, 2)}\n`;
+}
+
+export async function exportSharedProjectGraph(projectId: string, document: ProjectRecord['document'], excludedStates: readonly ExcludedState[]): Promise<string> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/graph/share`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedGraphRevision: document.graphRevision, expectedLayoutRevision: document.layoutRevision, excludedStates }),
+  });
+  if (!isObject(body) || body.format !== 'f8graph' || body.formatVersion !== 4) throw new Error('Shared graph export does not match f8graph/4');
+  return `${JSON.stringify(body, null, 2)}\n`;
+}
+
+export async function captureProjectComponent(projectId: string, document: ProjectRecord['document'], name: string, excludedStates: readonly ExcludedState[]): Promise<AssetRecord> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/components`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedGraphRevision: document.graphRevision, expectedLayoutRevision: document.layoutRevision, name, excludedStates }),
+  });
+  if (!isObject(body) || typeof body.assetId !== 'string') throw new Error('Component does not match the asset contract');
+  return body as unknown as AssetRecord;
 }
 
 export async function importProjectGraph(projectId: string, content: string, expected: Pick<ProjectRecord['document'], 'graphRevision' | 'layoutRevision'>): Promise<ProjectRecord> {

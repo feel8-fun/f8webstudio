@@ -111,7 +111,7 @@ def test_restart_service_refreshes_catalog_then_redeploys(tmp_path: Path) -> Non
         node_id="engine", service_class="test.engine",
     )
     document = StudioDocument(
-        schema_version="f8studio-document/2", project_id="project1", graph_id="graph1",
+        schema_version="f8studio-document/3", project_id="project1", graph_id="graph1",
         graph_revision=2, layout_revision=0, nodes=(service,), edges=(),
     )
     app = create_app(application=application, web_dist=tmp_path)
@@ -174,7 +174,7 @@ def test_restart_rejects_external_process_without_stopping_it(tmp_path: Path) ->
         node_id="engine", service_class="test.engine",
     )
     document = StudioDocument(
-        schema_version="f8studio-document/2", project_id="project1", graph_id="graph1",
+        schema_version="f8studio-document/3", project_id="project1", graph_id="graph1",
         graph_revision=2, layout_revision=0, nodes=(service,), edges=(),
     )
     app = create_app(application=application, web_dist=tmp_path)

@@ -321,7 +321,9 @@ def create_app(
             three_d=True,
             agent_tools=True,
         )
-        return {"protocol_version": API_PROTOCOL_VERSION, "capabilities": report.to_json_object()}
+        from f8studio_core.publication import PublicationCapabilities
+        return {"protocol_version": API_PROTOCOL_VERSION, "capabilities": report.to_json_object(),
+                "publication": _json_value(PublicationCapabilities())}
 
     @app.get("/api/media/rtc-configuration")
     async def media_rtc_configuration() -> F8JsonValue:
@@ -489,6 +491,35 @@ def create_app(
     async def export_project_graph(project_id: str) -> Response:
         document = await asyncio.to_thread(studio.projects.document, project_id)
         return Response(content=export_graph(document), media_type="application/json")
+
+    @app.post("/api/projects/{project_id}/graph/share")
+    async def export_shared_project_graph(project_id: str, request: Request) -> Response:
+        from .assets import ShareGraphRequest
+        from f8studio_core.graph.exchange import export_shared_graph
+
+        payload = await _decode_body(request, ShareGraphRequest)
+        document = await asyncio.to_thread(studio.projects.document, project_id)
+        if (document.graph_revision != payload.expected_graph_revision or
+                document.layout_revision != payload.expected_layout_revision):
+            raise RevisionConflictError("project changed before sharing; refresh and retry")
+        return Response(content=export_shared_graph(document, excluded_states=payload.excluded_states),
+                        media_type="application/json")
+
+    @app.post("/api/projects/{project_id}/components", status_code=201)
+    async def capture_project_component(project_id: str, request: Request) -> F8JsonValue:
+        from .assets import ApplicationContent, AssetKind, CaptureComponentRequest, CreateAssetRequest
+        from f8studio_core.graph.state_policy import project_document_for_sharing
+
+        payload = await _decode_body(request, CaptureComponentRequest)
+        document = await asyncio.to_thread(studio.projects.document, project_id)
+        if (document.graph_revision != payload.expected_graph_revision or
+                document.layout_revision != payload.expected_layout_revision):
+            raise RevisionConflictError("project changed before capture; refresh and retry")
+        shared = project_document_for_sharing(document, excluded_states=payload.excluded_states)
+        content = ApplicationContent(nodes=shared.nodes, edges=shared.edges, layout=shared.layout)
+        return _json_value(await asyncio.to_thread(studio.assets.create, CreateAssetRequest(
+            kind=AssetKind.component, name=payload.name, content=_json_value(content),
+        )))
 
     @app.post("/api/projects/{project_id}/graph/import")
     async def import_project_graph(project_id: str, request: Request,

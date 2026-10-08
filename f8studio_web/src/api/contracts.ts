@@ -117,7 +117,7 @@ export function isDeployJob(value: unknown): value is DeployJob {
 export function isStudioDocument(value: unknown): value is StudioDocument {
   if (typeof value !== 'object' || value === null) return false;
   const item = value as Record<string, unknown>;
-  return item.schemaVersion === 'f8studio-document/2' && typeof item.projectId === 'string' &&
+  return item.schemaVersion === 'f8studio-document/3' && typeof item.projectId === 'string' &&
     typeof item.graphRevision === 'number' && typeof item.layoutRevision === 'number' &&
     Array.isArray(item.nodes) && Array.isArray(item.edges) && Array.isArray(item.layout);
 }

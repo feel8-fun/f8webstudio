@@ -17,10 +17,11 @@ from .models import (
     StudioDocument,
 )
 from .validation import validate_document
+from .state_policy import ExcludedState, project_document_for_sharing, upgrade_document
 
 
 EXCHANGE_FORMAT = "f8graph"
-EXCHANGE_VERSION = 3
+EXCHANGE_VERSION = 4
 
 
 class ExchangeMetadata(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
@@ -127,7 +128,7 @@ def import_graph(payload: bytes | str, *, project_id: str | None = None) -> Stud
         exchange = _DECODER.decode(payload)
     except msgspec.DecodeError as exc:
         raise ValueError(f"invalid f8graph document: {exc}") from exc
-    if exchange.format != EXCHANGE_FORMAT or exchange.format_version != EXCHANGE_VERSION:
+    if exchange.format != EXCHANGE_FORMAT or exchange.format_version not in (3, EXCHANGE_VERSION):
         raise ValueError(f"unsupported graph format: {exchange.format}/{exchange.format_version}")
     if exchange.resources:
         raise ValueError("f8graph resources are not supported yet")
@@ -179,7 +180,7 @@ def import_graph(payload: bytes | str, *, project_id: str | None = None) -> Stud
             )
         )
     document = StudioDocument(
-        schema_version=DOCUMENT_SCHEMA_VERSION,
+        schema_version="f8studio-document/2" if exchange.format_version == 3 else DOCUMENT_SCHEMA_VERSION,
         project_id=project_id or exchange.metadata.project_id,
         graph_id=exchange.metadata.graph_id,
         graph_revision=0,
@@ -196,5 +197,10 @@ def import_graph(payload: bytes | str, *, project_id: str | None = None) -> Stud
             document,
             nodes=tuple(ordered[node_id] for node_id in exchange.presentation.node_order),
         )
+    document = upgrade_document(document)
     validate_document(document)
     return document
+
+
+def export_shared_graph(document: StudioDocument, *, excluded_states: tuple[ExcludedState, ...] = ()) -> bytes:
+    return export_graph(project_document_for_sharing(document, excluded_states=excluded_states))

@@ -60,7 +60,7 @@ function SchemaSection({ title, policy, children, onAdd, busy }: {
   </section>;
 }
 
-function SettingsDialog({ title, children, onClose }: {
+export function SettingsDialog({ title, children, onClose }: {
   readonly title: string;
   readonly children: ReactNode;
   readonly onClose: () => void;
@@ -207,7 +207,7 @@ export function SchemaEditor({ node, busy, commit }: {
             {['any', 'string', 'number', 'integer', 'boolean'].map((type) => <option key={type}>{type}</option>)}
           </select> : <span className="schema-kind">{valueType(field.valueSchema)}</span>}
           {allowsEdit('stateFields') ? <select className="schema-access-select" aria-label={`${field.name} access`} title="State access" value={field.access} disabled={!canEdit('stateFields') || field.editPolicy?.canEditAccess === false}
-            onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? { ...item, access: event.target.value as StateSpec['access'] } : item))}>
+            onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? { ...item, access: event.target.value as StateSpec['access'], ...(event.target.value === 'ro' ? { persistent: false, publishable: false } : {}) } : item))}>
             <option value="rw">RW</option><option value="ro">RO</option><option value="wo">WO</option>
           </select> : <span className="schema-access-label" title="State access">{field.access.toUpperCase()}</span>}
           <VisibilityButton visible={field.showOnNode === true} busy={busy} onChange={(visible) =>
@@ -227,7 +227,7 @@ export function SchemaEditor({ node, busy, commit }: {
             {['any', 'string', 'number', 'integer', 'boolean'].map((type) => <option key={type}>{type}</option>)}
           </select> : <output>{valueType(field.valueSchema)}</output>}</label>
           <label className="schema-detail-field">Access{allowsEdit('stateFields') ? <select aria-label={`${field.name} access`} value={field.access} disabled={!canEdit('stateFields') || field.editPolicy?.canEditAccess === false}
-            onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? { ...item, access: event.target.value as StateSpec['access'] } : item))}>
+            onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? { ...item, access: event.target.value as StateSpec['access'], ...(event.target.value === 'ro' ? { persistent: false, publishable: false } : {}) } : item))}>
             <option value="rw">Read/write</option><option value="ro">Read only</option><option value="wo">Write only</option>
           </select> : <output>{field.access.toUpperCase()}</output>}</label>
           <label className="schema-dialog-check"><input type="checkbox" checked={field.showOnNode === true} disabled={busy}
@@ -237,6 +237,18 @@ export function SchemaEditor({ node, busy, commit }: {
           {allowsEdit('stateFields') ? <label className="schema-dialog-check"><input type="checkbox" checked={field.valueRequired === true} disabled={!canEdit('stateFields') || field.editPolicy?.canEditValueRequired === false}
             onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? { ...item, valueRequired: event.target.checked } : item))} />Value required</label>
             : field.valueRequired === true && <span className="schema-item-meta">Required value</span>}
+          <label className="schema-dialog-check"><input type="checkbox" aria-label={`${field.name} persistent`}
+            checked={field.access !== 'ro' && field.persistent !== false}
+            disabled={!canEdit('stateFields') || field.access === 'ro'}
+            onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? {
+              ...item, persistent: event.target.checked, publishable: event.target.checked ? item.publishable : false,
+            } : item))} />Save value in local project (persistent)</label>
+          <label className="schema-dialog-check"><input type="checkbox" aria-label={`${field.name} publishable`}
+            checked={field.access !== 'ro' && field.persistent !== false && field.publishable !== false && field.redactOnPublish !== true}
+            disabled={!canEdit('stateFields') || field.access === 'ro' || field.persistent === false || field.redactOnPublish === true}
+            onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? {
+              ...item, publishable: event.target.checked,
+            } : item))} />Include value in shared graphs and components (publishable)</label>
           <label className="schema-detail-field">Widget<select aria-label={`${field.name} widget`} value={field.control?.kind ?? 'auto'} disabled={busy}
           onChange={(event) => setStates((draft.stateFields ?? []).map((item, i) => i === index ? {
             ...item, control: { kind: event.target.value as UiControlSpec['kind'] },

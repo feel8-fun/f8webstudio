@@ -1,0 +1,387 @@
+[
+  {
+    "value": null,
+    "canonical": "[\"f8publication-hash/1\",[\"null\"]]",
+    "sha256": "4a754827107894f5d307d7640f6fd0a07a916d123bf149de6b762bb1a612dd20"
+  },
+  {
+    "value": {
+      "z": [
+        true,
+        false,
+        null,
+        0,
+        -0.0,
+        1.0,
+        1e-07,
+        0.1,
+        9007199254740991
+      ],
+      "a": "中文\n😀"
+    },
+    "canonical": "[\"f8publication-hash/1\",[\"object\",[[\"a\",[\"string\",\"中文\\n😀\"]],[\"z\",[\"array\",[[\"boolean\",true],[\"boolean\",false],[\"null\"],[\"number\",\"0000000000000000\"],[\"number\",\"0000000000000000\"],[\"number\",\"3ff0000000000000\"],[\"number\",\"3e7ad7f29abcaf48\"],[\"number\",\"3fb999999999999a\"],[\"number\",\"433fffffffffffff\"]]]]]]]",
+    "sha256": "84a734b29b7f95595c8bce9863dc7bd71a05553d71e7e591bbd3dd40b33e3ff7"
+  },
+  {
+    "value": {
+      "": 1,
+      "😀": 2,
+      "𐀀": 3
+    },
+    "canonical": "[\"f8publication-hash/1\",[\"object\",[[\"\",[\"number\",\"3ff0000000000000\"]],[\"𐀀\",[\"number\",\"4008000000000000\"]],[\"😀\",[\"number\",\"4000000000000000\"]]]]]",
+    "sha256": "c8f67aa911744a5e0d09321793e225ed4ca869e0a95b5ce96bdc9d6ab0c4ecf2"
+  },
+  {
+    "value": {
+      "tag": [
+        "number",
+        "3ff0000000000000"
+      ]
+    },
+    "canonical": "[\"f8publication-hash/1\",[\"object\",[[\"tag\",[\"array\",[[\"string\",\"number\"],[\"string\",\"3ff0000000000000\"]]]]]]]",
+    "sha256": "641d3fb857a8bb7a9f68e7da5174abe2f5c6b60cd52dad353c49ac3924af5e8e"
+  },
+  {
+    "value": {
+      "kind": "graph",
+      "schemaVersion": "f8publication/1",
+      "manifest": {
+        "schemaVersion": "f8publication-manifest/1",
+        "kind": "graph",
+        "contentFormat": "f8graph",
+        "contentVersion": 4,
+        "license": "MIT",
+        "source": {
+          "repositoryUrl": "https://example.com/source",
+          "assetId": null,
+          "assetVersion": null
+        },
+        "dependencies": [
+          {
+            "extensionId": "test.extension",
+            "compatibleVersions": [
+              "1.0",
+              "1.1"
+            ],
+            "serviceClasses": [
+              "test.engine"
+            ],
+            "operators": [
+              {
+                "serviceClass": "test.engine",
+                "operatorClass": "test.script"
+              }
+            ],
+            "protocolVersions": [
+              "f8service/2",
+              "f8operator/2"
+            ],
+            "capabilities": [
+              "scripting"
+            ]
+          }
+        ]
+      },
+      "content": {
+        "format": "f8graph",
+        "formatVersion": 4,
+        "metadata": {
+          "graphId": "published",
+          "projectId": "published"
+        },
+        "definitions": {
+          "services": {
+            "9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2": {
+              "serviceClass": "test.engine",
+              "label": "Engine",
+              "specKind": "service",
+              "schemaVersion": "f8service/2",
+              "rendererClass": "default_svc",
+              "version": "0.0.0",
+              "tags": [],
+              "paletteCategory": "svc",
+              "hiddenInPalette": false,
+              "stateFields": [],
+              "commands": [],
+              "dataInPorts": [],
+              "dataOutPorts": []
+            }
+          },
+          "operators": {
+            "30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5": {
+              "operatorClass": "test.script",
+              "serviceClass": "test.engine",
+              "label": "Script",
+              "specKind": "operator",
+              "schemaVersion": "f8operator/2",
+              "rendererClass": "default_op",
+              "version": "0.0.0",
+              "tags": [],
+              "paletteCategory": "uncategorized",
+              "hiddenInPalette": false,
+              "stateFields": [
+                {
+                  "name": "code",
+                  "valueSchema": {
+                    "type": "string",
+                    "default": "pass"
+                  },
+                  "access": "rw",
+                  "persistent": true,
+                  "publishable": true,
+                  "valueRequired": false,
+                  "showOnNode": false,
+                  "redactOnPublish": false
+                },
+                {
+                  "name": "gain",
+                  "valueSchema": {
+                    "type": "number",
+                    "default": 1
+                  },
+                  "access": "rw",
+                  "persistent": true,
+                  "publishable": true,
+                  "valueRequired": false,
+                  "showOnNode": false,
+                  "redactOnPublish": false
+                },
+                {
+                  "name": "path",
+                  "valueSchema": {
+                    "type": "string",
+                    "default": "example.txt"
+                  },
+                  "access": "rw",
+                  "persistent": true,
+                  "publishable": false,
+                  "valueRequired": false,
+                  "showOnNode": false,
+                  "redactOnPublish": false
+                }
+              ],
+              "commands": [],
+              "execInPorts": [],
+              "execOutPorts": [],
+              "dataInPorts": [],
+              "dataOutPorts": []
+            }
+          }
+        },
+        "services": {
+          "engine": {
+            "nodeId": "engine",
+            "name": "Engine",
+            "definitionRef": "9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2",
+            "portIds": {},
+            "stateValues": {},
+            "enabled": true
+          }
+        },
+        "operators": {
+          "script": {
+            "nodeId": "script",
+            "name": "Script",
+            "serviceId": "engine",
+            "definitionRef": "30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5",
+            "portIds": {},
+            "stateValues": {
+              "code": "value * gain",
+              "gain": 2
+            },
+            "enabled": true
+          }
+        },
+        "connections": [],
+        "resources": {},
+        "presentation": {
+          "layout": [
+            {
+              "nodeId": "script",
+              "x": 1.5,
+              "y": -0.0,
+              "width": null,
+              "height": null,
+              "collapsed": false
+            }
+          ],
+          "nodeOrder": [
+            "engine",
+            "script"
+          ]
+        }
+      },
+      "contentHash": "9409035ca32122d86347ec7cf6dd93bbe042bf8ce39eade9b076ea19695fca15"
+    },
+    "canonical": "[\"f8publication-hash/1\",[\"object\",[[\"content\",[\"object\",[[\"connections\",[\"array\",[]]],[\"definitions\",[\"object\",[[\"operators\",[\"object\",[[\"30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5\",[\"object\",[[\"commands\",[\"array\",[]]],[\"dataInPorts\",[\"array\",[]]],[\"dataOutPorts\",[\"array\",[]]],[\"execInPorts\",[\"array\",[]]],[\"execOutPorts\",[\"array\",[]]],[\"hiddenInPalette\",[\"boolean\",false]],[\"label\",[\"string\",\"Script\"]],[\"operatorClass\",[\"string\",\"test.script\"]],[\"paletteCategory\",[\"string\",\"uncategorized\"]],[\"rendererClass\",[\"string\",\"default_op\"]],[\"schemaVersion\",[\"string\",\"f8operator/2\"]],[\"serviceClass\",[\"string\",\"test.engine\"]],[\"specKind\",[\"string\",\"operator\"]],[\"stateFields\",[\"array\",[[\"object\",[[\"access\",[\"string\",\"rw\"]],[\"name\",[\"string\",\"code\"]],[\"persistent\",[\"boolean\",true]],[\"publishable\",[\"boolean\",true]],[\"redactOnPublish\",[\"boolean\",false]],[\"showOnNode\",[\"boolean\",false]],[\"valueRequired\",[\"boolean\",false]],[\"valueSchema\",[\"object\",[[\"default\",[\"string\",\"pass\"]],[\"type\",[\"string\",\"string\"]]]]]]],[\"object\",[[\"access\",[\"string\",\"rw\"]],[\"name\",[\"string\",\"gain\"]],[\"persistent\",[\"boolean\",true]],[\"publishable\",[\"boolean\",true]],[\"redactOnPublish\",[\"boolean\",false]],[\"showOnNode\",[\"boolean\",false]],[\"valueRequired\",[\"boolean\",false]],[\"valueSchema\",[\"object\",[[\"default\",[\"number\",\"3ff0000000000000\"]],[\"type\",[\"string\",\"number\"]]]]]]],[\"object\",[[\"access\",[\"string\",\"rw\"]],[\"name\",[\"string\",\"path\"]],[\"persistent\",[\"boolean\",true]],[\"publishable\",[\"boolean\",false]],[\"redactOnPublish\",[\"boolean\",false]],[\"showOnNode\",[\"boolean\",false]],[\"valueRequired\",[\"boolean\",false]],[\"valueSchema\",[\"object\",[[\"default\",[\"string\",\"example.txt\"]],[\"type\",[\"string\",\"string\"]]]]]]]]]],[\"tags\",[\"array\",[]]],[\"version\",[\"string\",\"0.0.0\"]]]]]]]],[\"services\",[\"object\",[[\"9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2\",[\"object\",[[\"commands\",[\"array\",[]]],[\"dataInPorts\",[\"array\",[]]],[\"dataOutPorts\",[\"array\",[]]],[\"hiddenInPalette\",[\"boolean\",false]],[\"label\",[\"string\",\"Engine\"]],[\"paletteCategory\",[\"string\",\"svc\"]],[\"rendererClass\",[\"string\",\"default_svc\"]],[\"schemaVersion\",[\"string\",\"f8service/2\"]],[\"serviceClass\",[\"string\",\"test.engine\"]],[\"specKind\",[\"string\",\"service\"]],[\"stateFields\",[\"array\",[]]],[\"tags\",[\"array\",[]]],[\"version\",[\"string\",\"0.0.0\"]]]]]]]]]]],[\"format\",[\"string\",\"f8graph\"]],[\"formatVersion\",[\"number\",\"4010000000000000\"]],[\"metadata\",[\"object\",[[\"graphId\",[\"string\",\"published\"]],[\"projectId\",[\"string\",\"published\"]]]]],[\"operators\",[\"object\",[[\"script\",[\"object\",[[\"definitionRef\",[\"string\",\"30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5\"]],[\"enabled\",[\"boolean\",true]],[\"name\",[\"string\",\"Script\"]],[\"nodeId\",[\"string\",\"script\"]],[\"portIds\",[\"object\",[]]],[\"serviceId\",[\"string\",\"engine\"]],[\"stateValues\",[\"object\",[[\"code\",[\"string\",\"value * gain\"]],[\"gain\",[\"number\",\"4000000000000000\"]]]]]]]]]]],[\"presentation\",[\"object\",[[\"layout\",[\"array\",[[\"object\",[[\"collapsed\",[\"boolean\",false]],[\"height\",[\"null\"]],[\"nodeId\",[\"string\",\"script\"]],[\"width\",[\"null\"]],[\"x\",[\"number\",\"3ff8000000000000\"]],[\"y\",[\"number\",\"0000000000000000\"]]]]]]],[\"nodeOrder\",[\"array\",[[\"string\",\"engine\"],[\"string\",\"script\"]]]]]]],[\"resources\",[\"object\",[]]],[\"services\",[\"object\",[[\"engine\",[\"object\",[[\"definitionRef\",[\"string\",\"9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2\"]],[\"enabled\",[\"boolean\",true]],[\"name\",[\"string\",\"Engine\"]],[\"nodeId\",[\"string\",\"engine\"]],[\"portIds\",[\"object\",[]]],[\"stateValues\",[\"object\",[]]]]]]]]]]]],[\"contentHash\",[\"string\",\"9409035ca32122d86347ec7cf6dd93bbe042bf8ce39eade9b076ea19695fca15\"]],[\"kind\",[\"string\",\"graph\"]],[\"manifest\",[\"object\",[[\"contentFormat\",[\"string\",\"f8graph\"]],[\"contentVersion\",[\"number\",\"4010000000000000\"]],[\"dependencies\",[\"array\",[[\"object\",[[\"capabilities\",[\"array\",[[\"string\",\"scripting\"]]]],[\"compatibleVersions\",[\"array\",[[\"string\",\"1.0\"],[\"string\",\"1.1\"]]]],[\"extensionId\",[\"string\",\"test.extension\"]],[\"operators\",[\"array\",[[\"object\",[[\"operatorClass\",[\"string\",\"test.script\"]],[\"serviceClass\",[\"string\",\"test.engine\"]]]]]]],[\"protocolVersions\",[\"array\",[[\"string\",\"f8service/2\"],[\"string\",\"f8operator/2\"]]]],[\"serviceClasses\",[\"array\",[[\"string\",\"test.engine\"]]]]]]]]],[\"kind\",[\"string\",\"graph\"]],[\"license\",[\"string\",\"MIT\"]],[\"schemaVersion\",[\"string\",\"f8publication-manifest/1\"]],[\"source\",[\"object\",[[\"assetId\",[\"null\"]],[\"assetVersion\",[\"null\"]],[\"repositoryUrl\",[\"string\",\"https://example.com/source\"]]]]]]]],[\"schemaVersion\",[\"string\",\"f8publication/1\"]]]]]",
+    "sha256": "8d3635d69cc4e7e8fcb1555db8cb86724ed3a2418c0753fb03c9b4c7f8aa01c4"
+  },
+  {
+    "value": {
+      "kind": "component",
+      "schemaVersion": "f8publication/1",
+      "manifest": {
+        "schemaVersion": "f8publication-manifest/1",
+        "kind": "component",
+        "contentFormat": "f8component",
+        "contentVersion": 1,
+        "license": "MIT",
+        "source": {
+          "repositoryUrl": "https://example.com/source",
+          "assetId": null,
+          "assetVersion": null
+        },
+        "dependencies": [
+          {
+            "extensionId": "test.extension",
+            "compatibleVersions": [
+              "1.0",
+              "1.1"
+            ],
+            "serviceClasses": [
+              "test.engine"
+            ],
+            "operators": [
+              {
+                "serviceClass": "test.engine",
+                "operatorClass": "test.script"
+              }
+            ],
+            "protocolVersions": [
+              "f8service/2",
+              "f8operator/2"
+            ],
+            "capabilities": [
+              "scripting"
+            ]
+          }
+        ]
+      },
+      "content": {
+        "format": "f8component",
+        "formatVersion": 1,
+        "definitions": {
+          "services": {
+            "9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2": {
+              "serviceClass": "test.engine",
+              "label": "Engine",
+              "specKind": "service",
+              "schemaVersion": "f8service/2",
+              "rendererClass": "default_svc",
+              "version": "0.0.0",
+              "tags": [],
+              "paletteCategory": "svc",
+              "hiddenInPalette": false,
+              "stateFields": [],
+              "commands": [],
+              "dataInPorts": [],
+              "dataOutPorts": []
+            }
+          },
+          "operators": {
+            "30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5": {
+              "operatorClass": "test.script",
+              "serviceClass": "test.engine",
+              "label": "Script",
+              "specKind": "operator",
+              "schemaVersion": "f8operator/2",
+              "rendererClass": "default_op",
+              "version": "0.0.0",
+              "tags": [],
+              "paletteCategory": "uncategorized",
+              "hiddenInPalette": false,
+              "stateFields": [
+                {
+                  "name": "code",
+                  "valueSchema": {
+                    "type": "string",
+                    "default": "pass"
+                  },
+                  "access": "rw",
+                  "persistent": true,
+                  "publishable": true,
+                  "valueRequired": false,
+                  "showOnNode": false,
+                  "redactOnPublish": false
+                },
+                {
+                  "name": "gain",
+                  "valueSchema": {
+                    "type": "number",
+                    "default": 1
+                  },
+                  "access": "rw",
+                  "persistent": true,
+                  "publishable": true,
+                  "valueRequired": false,
+                  "showOnNode": false,
+                  "redactOnPublish": false
+                },
+                {
+                  "name": "path",
+                  "valueSchema": {
+                    "type": "string",
+                    "default": "example.txt"
+                  },
+                  "access": "rw",
+                  "persistent": true,
+                  "publishable": false,
+                  "valueRequired": false,
+                  "showOnNode": false,
+                  "redactOnPublish": false
+                }
+              ],
+              "commands": [],
+              "execInPorts": [],
+              "execOutPorts": [],
+              "dataInPorts": [],
+              "dataOutPorts": []
+            }
+          }
+        },
+        "services": {},
+        "operators": {
+          "script": {
+            "nodeId": "script",
+            "name": "Script",
+            "serviceId": "engine",
+            "definitionRef": "30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5",
+            "portIds": {},
+            "stateValues": {
+              "code": "value * gain",
+              "gain": 2
+            },
+            "enabled": true
+          }
+        },
+        "connections": [],
+        "presentation": {
+          "layout": [
+            {
+              "nodeId": "script",
+              "x": 1.5,
+              "y": -0.0,
+              "width": null,
+              "height": null,
+              "collapsed": false
+            }
+          ],
+          "nodeOrder": [
+            "script"
+          ]
+        },
+        "hostBindings": [
+          {
+            "bindingId": "engine",
+            "serviceClass": "test.engine",
+            "definitionRef": "9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2"
+          }
+        ],
+        "endpoints": []
+      },
+      "contentHash": "2190d9a1a4364523cea0656982b4d6325bcb4eac542f33ea59d8270c66690daa"
+    },
+    "canonical": "[\"f8publication-hash/1\",[\"object\",[[\"content\",[\"object\",[[\"connections\",[\"array\",[]]],[\"definitions\",[\"object\",[[\"operators\",[\"object\",[[\"30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5\",[\"object\",[[\"commands\",[\"array\",[]]],[\"dataInPorts\",[\"array\",[]]],[\"dataOutPorts\",[\"array\",[]]],[\"execInPorts\",[\"array\",[]]],[\"execOutPorts\",[\"array\",[]]],[\"hiddenInPalette\",[\"boolean\",false]],[\"label\",[\"string\",\"Script\"]],[\"operatorClass\",[\"string\",\"test.script\"]],[\"paletteCategory\",[\"string\",\"uncategorized\"]],[\"rendererClass\",[\"string\",\"default_op\"]],[\"schemaVersion\",[\"string\",\"f8operator/2\"]],[\"serviceClass\",[\"string\",\"test.engine\"]],[\"specKind\",[\"string\",\"operator\"]],[\"stateFields\",[\"array\",[[\"object\",[[\"access\",[\"string\",\"rw\"]],[\"name\",[\"string\",\"code\"]],[\"persistent\",[\"boolean\",true]],[\"publishable\",[\"boolean\",true]],[\"redactOnPublish\",[\"boolean\",false]],[\"showOnNode\",[\"boolean\",false]],[\"valueRequired\",[\"boolean\",false]],[\"valueSchema\",[\"object\",[[\"default\",[\"string\",\"pass\"]],[\"type\",[\"string\",\"string\"]]]]]]],[\"object\",[[\"access\",[\"string\",\"rw\"]],[\"name\",[\"string\",\"gain\"]],[\"persistent\",[\"boolean\",true]],[\"publishable\",[\"boolean\",true]],[\"redactOnPublish\",[\"boolean\",false]],[\"showOnNode\",[\"boolean\",false]],[\"valueRequired\",[\"boolean\",false]],[\"valueSchema\",[\"object\",[[\"default\",[\"number\",\"3ff0000000000000\"]],[\"type\",[\"string\",\"number\"]]]]]]],[\"object\",[[\"access\",[\"string\",\"rw\"]],[\"name\",[\"string\",\"path\"]],[\"persistent\",[\"boolean\",true]],[\"publishable\",[\"boolean\",false]],[\"redactOnPublish\",[\"boolean\",false]],[\"showOnNode\",[\"boolean\",false]],[\"valueRequired\",[\"boolean\",false]],[\"valueSchema\",[\"object\",[[\"default\",[\"string\",\"example.txt\"]],[\"type\",[\"string\",\"string\"]]]]]]]]]],[\"tags\",[\"array\",[]]],[\"version\",[\"string\",\"0.0.0\"]]]]]]]],[\"services\",[\"object\",[[\"9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2\",[\"object\",[[\"commands\",[\"array\",[]]],[\"dataInPorts\",[\"array\",[]]],[\"dataOutPorts\",[\"array\",[]]],[\"hiddenInPalette\",[\"boolean\",false]],[\"label\",[\"string\",\"Engine\"]],[\"paletteCategory\",[\"string\",\"svc\"]],[\"rendererClass\",[\"string\",\"default_svc\"]],[\"schemaVersion\",[\"string\",\"f8service/2\"]],[\"serviceClass\",[\"string\",\"test.engine\"]],[\"specKind\",[\"string\",\"service\"]],[\"stateFields\",[\"array\",[]]],[\"tags\",[\"array\",[]]],[\"version\",[\"string\",\"0.0.0\"]]]]]]]]]]],[\"endpoints\",[\"array\",[]]],[\"format\",[\"string\",\"f8component\"]],[\"formatVersion\",[\"number\",\"3ff0000000000000\"]],[\"hostBindings\",[\"array\",[[\"object\",[[\"bindingId\",[\"string\",\"engine\"]],[\"definitionRef\",[\"string\",\"9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2\"]],[\"serviceClass\",[\"string\",\"test.engine\"]]]]]]],[\"operators\",[\"object\",[[\"script\",[\"object\",[[\"definitionRef\",[\"string\",\"30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5\"]],[\"enabled\",[\"boolean\",true]],[\"name\",[\"string\",\"Script\"]],[\"nodeId\",[\"string\",\"script\"]],[\"portIds\",[\"object\",[]]],[\"serviceId\",[\"string\",\"engine\"]],[\"stateValues\",[\"object\",[[\"code\",[\"string\",\"value * gain\"]],[\"gain\",[\"number\",\"4000000000000000\"]]]]]]]]]]],[\"presentation\",[\"object\",[[\"layout\",[\"array\",[[\"object\",[[\"collapsed\",[\"boolean\",false]],[\"height\",[\"null\"]],[\"nodeId\",[\"string\",\"script\"]],[\"width\",[\"null\"]],[\"x\",[\"number\",\"3ff8000000000000\"]],[\"y\",[\"number\",\"0000000000000000\"]]]]]]],[\"nodeOrder\",[\"array\",[[\"string\",\"script\"]]]]]]],[\"services\",[\"object\",[]]]]]],[\"contentHash\",[\"string\",\"2190d9a1a4364523cea0656982b4d6325bcb4eac542f33ea59d8270c66690daa\"]],[\"kind\",[\"string\",\"component\"]],[\"manifest\",[\"object\",[[\"contentFormat\",[\"string\",\"f8component\"]],[\"contentVersion\",[\"number\",\"3ff0000000000000\"]],[\"dependencies\",[\"array\",[[\"object\",[[\"capabilities\",[\"array\",[[\"string\",\"scripting\"]]]],[\"compatibleVersions\",[\"array\",[[\"string\",\"1.0\"],[\"string\",\"1.1\"]]]],[\"extensionId\",[\"string\",\"test.extension\"]],[\"operators\",[\"array\",[[\"object\",[[\"operatorClass\",[\"string\",\"test.script\"]],[\"serviceClass\",[\"string\",\"test.engine\"]]]]]]],[\"protocolVersions\",[\"array\",[[\"string\",\"f8service/2\"],[\"string\",\"f8operator/2\"]]]],[\"serviceClasses\",[\"array\",[[\"string\",\"test.engine\"]]]]]]]]],[\"kind\",[\"string\",\"component\"]],[\"license\",[\"string\",\"MIT\"]],[\"schemaVersion\",[\"string\",\"f8publication-manifest/1\"]],[\"source\",[\"object\",[[\"assetId\",[\"null\"]],[\"assetVersion\",[\"null\"]],[\"repositoryUrl\",[\"string\",\"https://example.com/source\"]]]]]]]],[\"schemaVersion\",[\"string\",\"f8publication/1\"]]]]]",
+    "sha256": "2e7dc8cffec1549dfd55c919b5d08dac08efde1fa967d8679936c0d3fac82c67"
+  }
+]

@@ -1,0 +1,61 @@
+{
+  "connections": [],
+  "definitions": {
+    "operators": {},
+    "services": {
+      "6fa917822f78a1c188b9a4feb5236346ae5f5cd2d036df20fd116a72c638548a": {
+        "commands": [],
+        "dataInPorts": [],
+        "dataOutPorts": [],
+        "hiddenInPalette": false,
+        "label": "Legacy",
+        "paletteCategory": "svc",
+        "rendererClass": "default_svc",
+        "schemaVersion": "f8service/1",
+        "serviceClass": "test.legacy",
+        "specKind": "service",
+        "stateFields": [
+          {
+            "access": "rw",
+            "name": "path",
+            "redactOnPublish": true,
+            "showOnNode": false,
+            "valueRequired": false,
+            "valueSchema": {
+              "default": "example.mp4",
+              "type": "string"
+            }
+          }
+        ],
+        "tags": [],
+        "version": "0.0.0"
+      }
+    }
+  },
+  "format": "f8graph",
+  "formatVersion": 3,
+  "metadata": {
+    "graphId": "8b264bb764d64455bce79a79017e83e4",
+    "projectId": "legacy"
+  },
+  "operators": {},
+  "presentation": {
+    "layout": [],
+    "nodeOrder": [
+      "legacy"
+    ]
+  },
+  "resources": {},
+  "services": {
+    "legacy": {
+      "definitionRef": "6fa917822f78a1c188b9a4feb5236346ae5f5cd2d036df20fd116a72c638548a",
+      "enabled": true,
+      "name": "Legacy",
+      "nodeId": "legacy",
+      "portIds": {},
+      "stateValues": {
+        "path": "local.mp4"
+      }
+    }
+  }
+}

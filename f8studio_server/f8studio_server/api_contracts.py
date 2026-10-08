@@ -12,6 +12,7 @@ from f8pysdk.decision import DecisionResult
 from f8studio_core import HealthStatus, ServerCapabilities
 from f8studio_core.graph import GraphNode, PatchResult
 from f8studio_core.graph.exchange import GraphExchange
+from f8studio_core.publication import PublicationCapabilities
 from f8media_protocol import models as media
 from . import assets, editor, local_integration as local, models
 from .agents import models as agents, provider_settings as settings
@@ -57,6 +58,7 @@ from .models import ValidateDocumentRequest
 class CapabilitiesResponse(msgspec.Struct, frozen=True):
     protocol_version: Literal["f8studio-api/1"]
     capabilities: ServerCapabilities
+    publication: PublicationCapabilities = msgspec.field(default_factory=PublicationCapabilities)
 
 
 class AcceptedResponse(msgspec.Struct, frozen=True):
@@ -101,6 +103,8 @@ ROUTES = MANAGEMENT_ROUTES + (
     RouteContract("get", "/api/projects/{project_id}", None, models.ProjectRecord, 200),
     RouteContract("delete", "/api/projects/{project_id}", None, None, 204),
     RouteContract("get", "/api/projects/{project_id}/graph/export", None, GraphExchange, 200),
+    RouteContract("post", "/api/projects/{project_id}/graph/share", assets.ShareGraphRequest, GraphExchange, 200),
+    RouteContract("post", "/api/projects/{project_id}/components", assets.CaptureComponentRequest, assets.AssetRecord, 201),
     RouteContract("post", "/api/projects/{project_id}/graph/import", GraphExchange, models.ProjectRecord, 200),
     RouteContract("put", "/api/projects/{project_id}", UpdateProjectRequest, models.ProjectRecord, 200),
     RouteContract("get", "/api/projects/{project_id}/versions", None, tuple[assets.ProjectVersion, ...], 200),

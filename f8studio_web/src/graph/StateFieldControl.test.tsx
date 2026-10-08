@@ -193,3 +193,15 @@ test('uses a fixed single-line editor for compact wrapline state', () => {
   expect(screen.getByRole('textbox').tagName).toBe('INPUT');
   expect(document.querySelector('textarea')).toBeNull();
 });
+
+test('runtime-only buttons keep distinct trigger values while live updates arrive', () => {
+  const field: StateSpec = { name: 'trigger', access: 'rw', persistent: false, publishable: false,
+    control: { kind: 'button' }, valueSchema: { type: 'integer', default: 0 } };
+  const commit = vi.fn();
+  render(<StateFieldControl node={node} field={field} disabled={false} onCommit={commit} />);
+  const trigger = screen.getByRole('button', { name: 'Trigger trigger' });
+  fireEvent.click(trigger);
+  fireEvent.click(trigger);
+  expect(commit.mock.calls).toEqual([[1], [2]]);
+  expect(node.stateValues).toEqual({});
+});

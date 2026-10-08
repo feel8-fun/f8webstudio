@@ -110,6 +110,8 @@ class ValueStepperRuntimeNode(OperatorNode):
                 showOnNode=False,
             ),
             F8StateSpec(
+                persistent=False,
+                publishable=False,
                 name="increaseTrigger",
                 label="Increase",
                 description="Increment trigger input, typically driven by a button state edge.",
@@ -120,6 +122,8 @@ class ValueStepperRuntimeNode(OperatorNode):
                 showOnNode=False,
             ),
             F8StateSpec(
+                persistent=False,
+                publishable=False,
                 name="decreaseTrigger",
                 label="Decrease",
                 description="Decrement trigger input, typically driven by a button state edge.",

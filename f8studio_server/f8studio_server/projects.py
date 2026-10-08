@@ -3,6 +3,7 @@ from __future__ import annotations
 from f8studio_server.errors import InvalidRequestError, NotFoundError
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from collections.abc import Callable
 from threading import RLock
@@ -25,10 +26,13 @@ from f8studio_core.graph import (
     validate_document,
 )
 from f8studio_core.graph.codec import canonical_json_bytes
-from f8studio_core.graph.spec_edit import validate_spec_edit
+from f8studio_core.graph.spec_edit import validate_spec_snapshot
+from f8studio_core.graph.state_policy import apply_installed_state_policy
 
 from .models import CreateProjectRequest, ProjectRecord, ProjectSummary, UpdateProjectRequest
 from .project_repository import ProjectRepository, StoredRequest, utc_now_text
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -79,7 +83,7 @@ class ProjectService:
         record = self._repository.get_project(project_id)
         if record is None:
             raise NotFoundError(f"project not found: {project_id}")
-        return record
+        return msgspec.structs.replace(record, document=self.document(project_id))
 
     def summary(self, project_id: str) -> ProjectSummary:
         project_id = ensure_token(project_id, label="project_id")
@@ -122,7 +126,7 @@ class ProjectService:
             return
         for node in document.nodes:
             try:
-                validate_spec_edit(self._spec_resolver(node), node.spec)
+                validate_spec_snapshot(self._spec_resolver(node), node.spec)
             except (KeyError, TypeError, ValueError) as exc:
                 raise InvalidRequestError(f"node {node.node_id} differs from installed definition: {exc}") from exc
 
@@ -132,6 +136,7 @@ class ProjectService:
         project_id = ensure_token(project_id, label="project_id")
         if snapshot.project_id != project_id:
             raise InvalidRequestError("snapshot projectId does not match target project")
+        snapshot = self._apply_installed_policies(snapshot)
         with self._lock:
             current = self.get(project_id).document
             if ((expected_graph_revision is not None and current.graph_revision != expected_graph_revision)
@@ -216,9 +221,25 @@ class ProjectService:
         record = self._repository.get_project(project_id)
         if record is None:
             raise NotFoundError(f"project not found: {project_id}")
-        store = GraphStore(record.document, spec_resolver=self._spec_resolver)
+        store = GraphStore(self._apply_installed_policies(record.document), spec_resolver=self._spec_resolver)
         self._stores[project_id] = store
         return store
+
+    def _apply_installed_policies(self, document: StudioDocument) -> StudioDocument:
+        if self._spec_resolver is None:
+            return document
+        nodes: list[GraphNode] = []
+        for node in document.nodes:
+            try:
+                installed = self._spec_resolver(node)
+            except KeyError:
+                # Uninstalled extensions must remain readable; execution validates availability.
+                logger.warning("Cannot resolve installed state policy for project=%s node=%s; retaining snapshot policy",
+                               document.project_id, node.node_id, exc_info=True)
+                nodes.append(node)
+                continue
+            nodes.append(apply_installed_state_policy(node, installed))
+        return msgspec.structs.replace(document, nodes=tuple(nodes))
 
 
 __all__ = ["ProjectMutationResult", "ProjectService"]

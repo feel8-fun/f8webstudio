@@ -1,6 +1,7 @@
 from .catalog import NodeCatalog, replace_node_spec
 from .codec import decode_document, encode_document
-from .exchange import export_graph, import_graph
+from .exchange import export_graph, export_shared_graph, import_graph
+from .state_policy import ExcludedState, project_document_for_sharing
 from .models import (
     BindOperatorServiceOp,
     ConnectEdgeOp,
@@ -50,6 +51,7 @@ __all__ = [
     "DeleteNodeOp",
     "DisconnectEdgeOp",
     "EdgeStrategy",
+    "ExcludedState",
     "GraphEdge",
     "GraphEdgeKind",
     "GraphNode",
@@ -82,8 +84,10 @@ __all__ = [
     "decode_document",
     "encode_document",
     "export_graph",
+    "export_shared_graph",
     "import_graph",
     "new_document",
     "replace_node_spec",
+    "project_document_for_sharing",
     "validate_document",
 ]

@@ -488,11 +488,13 @@ export type BrowserRtcConfigurationInput = {
 export type CapabilitiesResponse = {
   readonly "protocol_version": "f8studio-api/1";
   readonly "capabilities": ServerCapabilities;
+  readonly "publication": PublicationCapabilities;
 };
 
 export type CapabilitiesResponseInput = {
   readonly "protocol_version": "f8studio-api/1";
   readonly "capabilities": ServerCapabilitiesInput;
+  readonly "publication"?: PublicationCapabilitiesInput;
 };
 
 export type CapabilityResource = {
@@ -505,6 +507,20 @@ export type CapabilityResourceInput = {
   readonly "extensionId": string;
   readonly "resourceId": string;
   readonly "description": string;
+};
+
+export type CaptureComponentRequest = {
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "excludedStates": ReadonlyArray<ExcludedState>;
+  readonly "name": string;
+};
+
+export type CaptureComponentRequestInput = {
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
+  readonly "name"?: string;
 };
 
 export type CatalogSnapshot = {
@@ -553,6 +569,36 @@ export type Commands = {
 
 export type CommandsInput = {
   readonly "showOnNode"?: boolean;
+};
+
+export type ComponentEndpoint = {
+  readonly "endpointId": string;
+  readonly "nodeId": string;
+  readonly "portId": string;
+  readonly "direction": PortDirection;
+};
+
+export type ComponentEndpointInput = {
+  readonly "endpointId": string;
+  readonly "nodeId": string;
+  readonly "portId": string;
+  readonly "direction": PortDirectionInput;
+};
+
+export type ComponentPublication = {
+  readonly "kind": "component";
+  readonly "schemaVersion": "f8publication/1";
+  readonly "manifest": PublicationManifest;
+  readonly "content": PortableComponent;
+  readonly "contentHash": string;
+};
+
+export type ComponentPublicationInput = {
+  readonly "kind": "component";
+  readonly "schemaVersion"?: "f8publication/1";
+  readonly "manifest": PublicationManifestInput;
+  readonly "content": PortableComponentInput;
+  readonly "contentHash": string;
 };
 
 export type ConnectEdgeOp = {
@@ -1101,6 +1147,16 @@ export type ExchangeServiceInput = {
   readonly "enabled"?: boolean;
 };
 
+export type ExcludedState = {
+  readonly "nodeId": string;
+  readonly "field": string;
+};
+
+export type ExcludedStateInput = {
+  readonly "nodeId": string;
+  readonly "field": string;
+};
+
 export type ExtensionDetail = {
   readonly "extensionId": string;
   readonly "services": ReadonlyArray<ExtensionServiceDetail>;
@@ -1141,6 +1197,24 @@ export type ExtensionInstallPlanInput = {
   readonly "runtimeKind": "bundled" | "native" | "pixi" | "shared" | "workspace";
   readonly "action": "bundled" | "create" | "none" | "reuse" | "shared" | "workspace";
   readonly "requiresNetwork": boolean;
+};
+
+export type ExtensionRequirement = {
+  readonly "extensionId": string;
+  readonly "compatibleVersions": ReadonlyArray<string>;
+  readonly "serviceClasses": ReadonlyArray<string>;
+  readonly "operators": ReadonlyArray<OperatorRequirement>;
+  readonly "protocolVersions": ReadonlyArray<string>;
+  readonly "capabilities": ReadonlyArray<string>;
+};
+
+export type ExtensionRequirementInput = {
+  readonly "extensionId": string;
+  readonly "compatibleVersions"?: ReadonlyArray<string>;
+  readonly "serviceClasses"?: ReadonlyArray<string>;
+  readonly "operators"?: ReadonlyArray<OperatorRequirementInput>;
+  readonly "protocolVersions"?: ReadonlyArray<string>;
+  readonly "capabilities"?: ReadonlyArray<string>;
 };
 
 export type ExtensionServiceDetail = {
@@ -2087,9 +2161,9 @@ export type F8NumberTypeSchemaInput = {
   readonly "multipleOf"?: number;
 };
 
-export type F8OperatorSchemaVersion = "f8operator/1";
+export type F8OperatorSchemaVersion = "f8operator/1" | "f8operator/2";
 
-export type F8OperatorSchemaVersionInput = "f8operator/1";
+export type F8OperatorSchemaVersionInput = "f8operator/1" | "f8operator/2";
 
 export type F8OperatorSpec = {
   readonly "operatorClass": string;
@@ -2263,9 +2337,9 @@ export type F8ServiceLaunchSpecInput = {
   readonly "workdir"?: string;
 };
 
-export type F8ServiceSchemaVersion = "f8service/1";
+export type F8ServiceSchemaVersion = "f8service/1" | "f8service/2";
 
-export type F8ServiceSchemaVersionInput = "f8service/1";
+export type F8ServiceSchemaVersionInput = "f8service/1" | "f8service/2";
 
 export type F8ServiceSpec = {
   readonly "serviceClass": string;
@@ -2455,6 +2529,8 @@ export type F8StateSpec = {
   readonly "access": F8StateAccess;
   readonly "label"?: string;
   readonly "description"?: string;
+  readonly "persistent"?: boolean;
+  readonly "publishable"?: boolean;
   readonly "valueRequired"?: boolean;
   readonly "editPolicy"?: F8StateFieldEditPolicy;
   readonly "control"?: F8UiControlSpec;
@@ -2469,6 +2545,8 @@ export type F8StateSpecInput = {
   readonly "access": F8StateAccessInput;
   readonly "label"?: string;
   readonly "description"?: string;
+  readonly "persistent"?: boolean;
+  readonly "publishable"?: boolean;
   readonly "valueRequired"?: boolean;
   readonly "editPolicy"?: F8StateFieldEditPolicyInput;
   readonly "control"?: F8UiControlSpecInput;
@@ -2727,6 +2805,22 @@ export type GraphPortInput = {
   readonly "stateSpec"?: null | F8StateSpecInput;
 };
 
+export type GraphPublication = {
+  readonly "kind": "graph";
+  readonly "schemaVersion": "f8publication/1";
+  readonly "manifest": PublicationManifest;
+  readonly "content": GraphExchange;
+  readonly "contentHash": string;
+};
+
+export type GraphPublicationInput = {
+  readonly "kind": "graph";
+  readonly "schemaVersion"?: "f8publication/1";
+  readonly "manifest": PublicationManifestInput;
+  readonly "content": GraphExchangeInput;
+  readonly "contentHash": string;
+};
+
 export type HealthStatus = {
   readonly "status": "ok";
   readonly "service": string;
@@ -2755,6 +2849,18 @@ export type HistoryRequestInput = {
   readonly "requestId": string;
   readonly "expectedGraphRevision": number;
   readonly "expectedLayoutRevision": number;
+};
+
+export type HostBinding = {
+  readonly "bindingId": string;
+  readonly "serviceClass": string;
+  readonly "definitionRef": string;
+};
+
+export type HostBindingInput = {
+  readonly "bindingId": string;
+  readonly "serviceClass": string;
+  readonly "definitionRef": string;
 };
 
 export type HotkeyBinding = {
@@ -3121,6 +3227,16 @@ export type OperatorNodeInput = {
   readonly "enabled"?: boolean;
 };
 
+export type OperatorRequirement = {
+  readonly "serviceClass": string;
+  readonly "operatorClass": string;
+};
+
+export type OperatorRequirementInput = {
+  readonly "serviceClass": string;
+  readonly "operatorClass": string;
+};
+
 export type Out = {
   readonly "showOnNode"?: boolean;
 };
@@ -3202,6 +3318,30 @@ export type PortDirectionInput = "input" | "output";
 export type PortKind = "command" | "data" | "exec" | "state";
 
 export type PortKindInput = "command" | "data" | "exec" | "state";
+
+export type PortableComponent = {
+  readonly "format": "f8component";
+  readonly "formatVersion": 1;
+  readonly "definitions": ExchangeDefinitions;
+  readonly "services": Readonly<Record<string, ExchangeService>>;
+  readonly "operators": Readonly<Record<string, ExchangeOperator>>;
+  readonly "connections": ReadonlyArray<GraphEdge>;
+  readonly "presentation": ExchangePresentation;
+  readonly "hostBindings": ReadonlyArray<HostBinding>;
+  readonly "endpoints": ReadonlyArray<ComponentEndpoint>;
+};
+
+export type PortableComponentInput = {
+  readonly "format"?: "f8component";
+  readonly "formatVersion"?: 1;
+  readonly "definitions": ExchangeDefinitionsInput;
+  readonly "services": Readonly<Record<string, ExchangeServiceInput>>;
+  readonly "operators": Readonly<Record<string, ExchangeOperatorInput>>;
+  readonly "connections"?: ReadonlyArray<GraphEdgeInput>;
+  readonly "presentation"?: ExchangePresentationInput;
+  readonly "hostBindings"?: ReadonlyArray<HostBindingInput>;
+  readonly "endpoints"?: ReadonlyArray<ComponentEndpointInput>;
+};
 
 export type PresentationCommand = {
   readonly "nodeId": string;
@@ -3339,6 +3479,54 @@ export type ProviderSettingsViewInput = {
   readonly "models"?: ReadonlyArray<string>;
   readonly "custom"?: boolean;
   readonly "modelCapabilities"?: ReadonlyArray<ModelCapabilitiesInput>;
+};
+
+export type PublicationCapabilities = {
+  readonly "publicationVersions": ReadonlyArray<string>;
+  readonly "graphVersions": ReadonlyArray<number>;
+  readonly "componentVersions": ReadonlyArray<number>;
+  readonly "legacyComponentVersions": ReadonlyArray<string>;
+  readonly "hashProfiles": ReadonlyArray<string>;
+};
+
+export type PublicationCapabilitiesInput = {
+  readonly "publicationVersions"?: ReadonlyArray<string>;
+  readonly "graphVersions"?: ReadonlyArray<number>;
+  readonly "componentVersions"?: ReadonlyArray<number>;
+  readonly "legacyComponentVersions"?: ReadonlyArray<string>;
+  readonly "hashProfiles"?: ReadonlyArray<string>;
+};
+
+export type PublicationManifest = {
+  readonly "schemaVersion": "f8publication-manifest/1";
+  readonly "kind": "component" | "graph";
+  readonly "contentFormat": "f8component" | "f8graph";
+  readonly "contentVersion": number;
+  readonly "license": string;
+  readonly "source": PublicationSource;
+  readonly "dependencies": ReadonlyArray<ExtensionRequirement>;
+};
+
+export type PublicationManifestInput = {
+  readonly "schemaVersion"?: "f8publication-manifest/1";
+  readonly "kind": "component" | "graph";
+  readonly "contentFormat": "f8component" | "f8graph";
+  readonly "contentVersion": number;
+  readonly "license": string;
+  readonly "source": PublicationSourceInput;
+  readonly "dependencies": ReadonlyArray<ExtensionRequirementInput>;
+};
+
+export type PublicationSource = {
+  readonly "repositoryUrl": string | null;
+  readonly "assetId": string | null;
+  readonly "assetVersion": number | null;
+};
+
+export type PublicationSourceInput = {
+  readonly "repositoryUrl"?: string | null;
+  readonly "assetId"?: string | null;
+  readonly "assetVersion"?: number | null;
 };
 
 export type RefreshInstalledSpecOp = {
@@ -3717,6 +3905,18 @@ export type SetServiceSpecOpInput = {
   readonly "nodeId": string;
   readonly "spec": F8ServiceSpecInput;
   readonly "portRenames"?: Readonly<Record<string, string>>;
+};
+
+export type ShareGraphRequest = {
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "excludedStates": ReadonlyArray<ExcludedState>;
+};
+
+export type ShareGraphRequestInput = {
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
 };
 
 export type SkeletonLimits = {
@@ -4244,6 +4444,8 @@ export interface ApiRequests {
   readonly "POST /api/audio/sessions": AudioSessionOfferInput;
   readonly "POST /api/media/overlays": OverlayResultInput;
   readonly "POST /api/projects": CreateProjectRequestInput;
+  readonly "POST /api/projects/{project_id}/graph/share": ShareGraphRequestInput;
+  readonly "POST /api/projects/{project_id}/components": CaptureComponentRequestInput;
   readonly "POST /api/projects/{project_id}/graph/import": GraphExchangeInput;
   readonly "PUT /api/projects/{project_id}": UpdateProjectRequestInput;
   readonly "POST /api/projects/{project_id}/versions": CreateProjectVersionRequestInput;
@@ -4348,6 +4550,8 @@ export interface ApiResponses {
   readonly "GET /api/projects/{project_id}": ProjectRecord;
   readonly "DELETE /api/projects/{project_id}": void;
   readonly "GET /api/projects/{project_id}/graph/export": GraphExchange;
+  readonly "POST /api/projects/{project_id}/graph/share": GraphExchange;
+  readonly "POST /api/projects/{project_id}/components": AssetRecord;
   readonly "POST /api/projects/{project_id}/graph/import": ProjectRecord;
   readonly "PUT /api/projects/{project_id}": ProjectRecord;
   readonly "GET /api/projects/{project_id}/versions": ReadonlyArray<ProjectVersion>;

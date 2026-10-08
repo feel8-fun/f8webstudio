@@ -10,9 +10,9 @@ import msgspec
 
 from f8pysdk.service_runtime_tools.inventory import ServiceCatalog, load_discovery_into_catalog
 from f8pysdk.service_runtime_tools.inventory.index import load_index_into_catalog
-from f8pysdk.specs import F8OperatorSpec, F8ServiceDescribe, F8ServiceSpec
+from f8pysdk.specs import F8OperatorSpec, F8ServiceDescribe, F8ServiceSpec, normalize_spec_policy
 from f8studio_core.graph import NodeCatalog
-from f8studio_core.graph.models import GraphNode, ServiceNode
+from f8studio_core.graph.models import GraphNode, OperatorNode
 
 from .models import CreateCatalogNodeRequest
 
@@ -90,7 +90,8 @@ class CatalogService:
                     key=lambda spec: (str(spec.serviceClass), str(spec.operatorClass)),
                 )
             )
-        return CatalogSnapshot(services=services, operators=operators)
+        return CatalogSnapshot(services=tuple(normalize_spec_policy(spec) for spec in services),
+                               operators=tuple(normalize_spec_policy(spec) for spec in operators))
 
     def create_node(self, request: CreateCatalogNodeRequest) -> GraphNode:
         snapshot = self.snapshot()
@@ -119,11 +120,14 @@ class CatalogService:
                 f"unknown operator: {request.service_class}/{request.operator_class}"
             ) from exc
 
-    def spec_for_node(self, node: GraphNode) -> F8ServiceSpec | F8OperatorSpec:
+    def spec_for_classes(self, service_class: str, operator_class: str | None) -> F8ServiceSpec | F8OperatorSpec:
         with self._lock:
-            if isinstance(node, ServiceNode):
-                return self._catalog.services.get(node.service_class)
-            return self._catalog.operators.get(node.service_class, node.operator_class)
+            if operator_class is None:
+                return normalize_spec_policy(self._catalog.services.get(service_class))
+            return normalize_spec_policy(self._catalog.operators.get(service_class, operator_class))
+
+    def spec_for_node(self, node: GraphNode) -> F8ServiceSpec | F8OperatorSpec:
+        return self.spec_for_classes(node.service_class, node.operator_class if isinstance(node, OperatorNode) else None)
 
 
 __all__ = ["CatalogService", "CatalogSnapshot"]

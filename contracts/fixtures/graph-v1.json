@@ -1,0 +1,171 @@
+{
+  "kind": "graph",
+  "schemaVersion": "f8publication/1",
+  "manifest": {
+    "schemaVersion": "f8publication-manifest/1",
+    "kind": "graph",
+    "contentFormat": "f8graph",
+    "contentVersion": 4,
+    "license": "MIT",
+    "source": {
+      "repositoryUrl": "https://example.com/source",
+      "assetId": null,
+      "assetVersion": null
+    },
+    "dependencies": [
+      {
+        "extensionId": "test.extension",
+        "compatibleVersions": [
+          "1.0",
+          "1.1"
+        ],
+        "serviceClasses": [
+          "test.engine"
+        ],
+        "operators": [
+          {
+            "serviceClass": "test.engine",
+            "operatorClass": "test.script"
+          }
+        ],
+        "protocolVersions": [
+          "f8service/2",
+          "f8operator/2"
+        ],
+        "capabilities": [
+          "scripting"
+        ]
+      }
+    ]
+  },
+  "content": {
+    "format": "f8graph",
+    "formatVersion": 4,
+    "metadata": {
+      "graphId": "published",
+      "projectId": "published"
+    },
+    "definitions": {
+      "services": {
+        "9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2": {
+          "serviceClass": "test.engine",
+          "label": "Engine",
+          "specKind": "service",
+          "schemaVersion": "f8service/2",
+          "rendererClass": "default_svc",
+          "version": "0.0.0",
+          "tags": [],
+          "paletteCategory": "svc",
+          "hiddenInPalette": false,
+          "stateFields": [],
+          "commands": [],
+          "dataInPorts": [],
+          "dataOutPorts": []
+        }
+      },
+      "operators": {
+        "30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5": {
+          "operatorClass": "test.script",
+          "serviceClass": "test.engine",
+          "label": "Script",
+          "specKind": "operator",
+          "schemaVersion": "f8operator/2",
+          "rendererClass": "default_op",
+          "version": "0.0.0",
+          "tags": [],
+          "paletteCategory": "uncategorized",
+          "hiddenInPalette": false,
+          "stateFields": [
+            {
+              "name": "code",
+              "valueSchema": {
+                "type": "string",
+                "default": "pass"
+              },
+              "access": "rw",
+              "persistent": true,
+              "publishable": true,
+              "valueRequired": false,
+              "showOnNode": false,
+              "redactOnPublish": false
+            },
+            {
+              "name": "gain",
+              "valueSchema": {
+                "type": "number",
+                "default": 1
+              },
+              "access": "rw",
+              "persistent": true,
+              "publishable": true,
+              "valueRequired": false,
+              "showOnNode": false,
+              "redactOnPublish": false
+            },
+            {
+              "name": "path",
+              "valueSchema": {
+                "type": "string",
+                "default": "example.txt"
+              },
+              "access": "rw",
+              "persistent": true,
+              "publishable": false,
+              "valueRequired": false,
+              "showOnNode": false,
+              "redactOnPublish": false
+            }
+          ],
+          "commands": [],
+          "execInPorts": [],
+          "execOutPorts": [],
+          "dataInPorts": [],
+          "dataOutPorts": []
+        }
+      }
+    },
+    "services": {
+      "engine": {
+        "nodeId": "engine",
+        "name": "Engine",
+        "definitionRef": "9ee51f1201c73cff564493230fe2ec68f0c14496ac4587e36b75315571dab8a2",
+        "portIds": {},
+        "stateValues": {},
+        "enabled": true
+      }
+    },
+    "operators": {
+      "script": {
+        "nodeId": "script",
+        "name": "Script",
+        "serviceId": "engine",
+        "definitionRef": "30817d00f916bcc5ba0aca68da8e14977990fa7c9ffae429effa3da61487ebe5",
+        "portIds": {},
+        "stateValues": {
+          "code": "value * gain",
+          "gain": 2
+        },
+        "enabled": true
+      }
+    },
+    "connections": [],
+    "resources": {},
+    "presentation": {
+      "layout": [
+        {
+          "nodeId": "script",
+          "x": 1.5,
+          "y": -0.0,
+          "width": null,
+          "height": null,
+          "collapsed": false
+        }
+      ],
+      "nodeOrder": [
+        "engine",
+        "script"
+      ]
+    }
+  },
+  "contentHash": "9409035ca32122d86347ec7cf6dd93bbe042bf8ce39eade9b076ea19695fca15"
+}

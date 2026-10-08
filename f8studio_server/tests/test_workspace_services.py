@@ -123,7 +123,9 @@ class HotkeyRuntimeGateway:
         return RuntimeActionResult(success=True)
 
     async def read_state(self, service_id: str, *, node_id: str, field: str) -> RuntimeStateField:
-        del service_id, node_id
+        for service, node, name, value in reversed(self.state_calls):
+            if (service, node, name) == (service_id, node_id, field):
+                return RuntimeStateField(field=field, found=True, value=value)
         return RuntimeStateField(field=field, found=False)
 
     async def invoke_command(
@@ -300,7 +302,7 @@ def test_hotkey_contract_normalizes_accelerators() -> None:
     assert service.list_hotkeys() == ()
 
 
-def test_hotkey_activation_commits_graph_state_and_syncs_runtime(tmp_path: Path) -> None:
+def test_hotkey_activation_preserves_graph_revision_and_syncs_runtime(tmp_path: Path) -> None:
     runtime = HotkeyRuntimeGateway()
     studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
     project = studio.projects.create(CreateProjectRequest(project_id="project1", name="Hotkeys"))
@@ -338,8 +340,12 @@ def test_hotkey_activation_commits_graph_state_and_syncs_runtime(tmp_path: Path)
 
     updated = studio.projects.document(project.project_id)
     updated_stepper = next(node for node in updated.nodes if node.node_id == "stepper")
-    assert updated_stepper.state_values["increaseTrigger"] == 1
+    assert "increaseTrigger" not in updated_stepper.state_values
+    assert updated.graph_revision == 1
     assert runtime.state_calls == [("studio", "stepper", "increaseTrigger", 1)]
+    asyncio.run(studio._activate_hotkey(binding))
+    assert runtime.state_calls[-1] == ("studio", "stepper", "increaseTrigger", 2)
+    assert studio.projects.document(project.project_id).graph_revision == 1
     studio.editor.close()
 
 
@@ -470,3 +476,159 @@ def test_state_sync_cancellation_publishes_committed_document(tmp_path: Path) ->
         asyncio.run(run())
     finally:
         studio.editor.close()
+
+
+def test_transient_patch_sends_runtime_once_without_saving_or_changing_updated_at(tmp_path: Path) -> None:
+    runtime = HotkeyRuntimeGateway()
+    studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
+    project = studio.projects.create(CreateProjectRequest(project_id="transient", name="Transient"))
+    service = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class="f8.pystudio"))
+    stepper = studio.catalog.create_node(CreateCatalogNodeRequest(kind="operator", node_id="stepper", service_id="studio", service_class="f8.pystudio", operator_class="f8.value_stepper"))
+    created = studio.projects.patch(project.project_id, PatchRequest(request_id="create", expected_graph_revision=0, expected_layout_revision=0, operations=(CreateNodeOp(node=service), CreateNodeOp(node=stepper)))).result.document
+    timestamp = studio.projects.get(project.project_id).updated_at
+    request = PatchRequest(request_id="trigger", expected_graph_revision=created.graph_revision, expected_layout_revision=created.layout_revision,
+                           operations=(SetNodeStateOp(node_id="stepper", field="increaseTrigger", value=1),))
+
+    async def run() -> None:
+        with patch.object(studio.tools._commits, "publish", new_callable=AsyncMock) as publish:
+            result = await studio.tools.apply_patch(project.project_id, request)
+            assert result.document == created
+            assert not result.graph_changed
+            assert not result.runtime_errors
+            await studio.tools.apply_patch(project.project_id, request)
+            publish.assert_not_called()
+        assert runtime.state_calls == [("studio", "stepper", "increaseTrigger", 1)]
+        assert studio.projects.get(project.project_id).updated_at == timestamp
+        reloaded = ProjectService(ProjectRepository(studio.data_dir / "studio.sqlite3"), spec_resolver=studio.catalog.spec_for_node)
+        assert reloaded.document(project.project_id) == created
+        assert reloaded.patch(project.project_id, request).replayed
+
+    try:
+        asyncio.run(run())
+    finally:
+        studio.editor.close()
+        studio.platform.close()
+
+
+def test_components_and_presets_remove_private_instance_values_including_historical_exports(tmp_path: Path) -> None:
+    from f8pysdk.specs import F8StateSpec, F8StateAccess, integer_schema, string_schema
+    from f8studio_core.graph import new_document
+    from f8studio_server.assets import ApplicationContent, VariantContent
+    from f8studio_core.graph.state_policy import project_document_for_sharing
+
+    spec = F8ServiceSpec(serviceClass="test.policy", label="Policy", stateFields=[
+        F8StateSpec(name="path", access=F8StateAccess.rw, valueSchema=string_schema(default="demo.mp4"), publishable=False),
+        F8StateSpec(name="gain", access=F8StateAccess.rw, valueSchema=integer_schema(default=1)),
+        F8StateSpec(name="trigger", access=F8StateAccess.rw, valueSchema=integer_schema(default=0), persistent=False),
+    ])
+    repository = AssetRepository(tmp_path / "assets.sqlite3", spec_resolver=lambda service_class, operator_class: spec)
+    node = NodeCatalog(services=[spec]).create_service_node(node_id="policy", service_class="test.policy", state_values={"path": "private-real.mp4", "gain": 3})
+    component = ApplicationContent(nodes=(node,))
+    payload = msgspec.to_builtins(component)
+    created = repository.create(CreateAssetRequest(kind=AssetKind.component, name="Policy", content=payload))
+    exported = msgspec.json.encode(repository.export(created.asset_id))
+    assert b"private-real.mp4" not in exported
+    assert b"demo.mp4" in exported
+    assert created.content["nodes"][0]["stateValues"] == {"gain": 3}
+
+    # Historical stored components are projected again on reads/export; no archive rewrite.
+    with repository._connect() as connection:
+        connection.execute("UPDATE local_asset_versions SET content = ? WHERE asset_id = ?", (msgspec.json.encode(payload), created.asset_id))
+    assert b"private-real.mp4" not in msgspec.json.encode(repository.versions(created.asset_id))
+    assert b"private-real.mp4" not in msgspec.json.encode(repository.export(created.asset_id))
+    variant = VariantContent(service_class="test.policy", state_values={"path": "private-real.mp4", "gain": 4, "trigger": 10})
+    preset = repository.create(CreateAssetRequest(kind=AssetKind.variant, name="Preset", content=msgspec.to_builtins(variant)))
+    assert preset.content["stateValues"] == {"gain": 4}
+    assert b"private-real.mp4" not in msgspec.json.encode(repository.export(preset.asset_id))
+    other = AssetRepository(tmp_path / "imported.sqlite3", spec_resolver=lambda service_class, operator_class: spec)
+    assert other.import_asset(repository.export(preset.asset_id)).content == preset.content
+    assert project_document_for_sharing(msgspec.structs.replace(new_document(project_id="local"), nodes=(node,))).nodes[0].spec == node.spec
+
+
+def test_loading_historical_project_applies_new_installed_runtime_policy(tmp_path: Path) -> None:
+    from f8pysdk.specs import F8StateSpec, F8StateAccess, integer_schema
+    repository = ProjectRepository(tmp_path / "studio.sqlite3")
+    service = ProjectService(repository)
+    project = service.create(CreateProjectRequest(project_id="legacy", name="Legacy"))
+    old = F8ServiceSpec(serviceClass="test.policy", label="Policy", stateFields=[F8StateSpec(name="trigger", access=F8StateAccess.rw, valueSchema=integer_schema(default=0))])
+    node = NodeCatalog(services=[old]).create_service_node(node_id="legacy", service_class="test.policy", state_values={"trigger": 100})
+    service.patch(project.project_id, PatchRequest(request_id="old", expected_graph_revision=0, expected_layout_revision=0, operations=(CreateNodeOp(node=node),)))
+    current = msgspec.structs.replace(old, stateFields=[msgspec.structs.replace(old.stateFields[0], persistent=False, publishable=False)])
+    reloaded = ProjectService(repository, spec_resolver=lambda node: current)
+    loaded = reloaded.get(project.project_id)
+    assert loaded.document.graph_revision == 1
+    assert loaded.document.nodes[0].state_values == {}
+    assert loaded.document.nodes[0].spec.stateFields[0].persistent is False
+
+
+def test_concurrent_runtime_hotkeys_use_distinct_values_without_graph_revisions(tmp_path: Path) -> None:
+    class ConcurrentRuntime(HotkeyRuntimeGateway):
+        async def read_state(self, service_id: str, *, node_id: str, field: str) -> RuntimeStateField:
+            observed = await super().read_state(service_id, node_id=node_id, field=field)
+            await asyncio.sleep(0)
+            return observed
+
+    runtime = ConcurrentRuntime()
+    studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
+    project = studio.projects.create(CreateProjectRequest(project_id="concurrent", name="Concurrent"))
+    service = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class="f8.pystudio"))
+    stepper = studio.catalog.create_node(CreateCatalogNodeRequest(kind="operator", node_id="stepper", service_id="studio", service_class="f8.pystudio", operator_class="f8.value_stepper"))
+    studio.projects.patch(project.project_id, PatchRequest(request_id="create", expected_graph_revision=0, expected_layout_revision=0, operations=(CreateNodeOp(node=service), CreateNodeOp(node=stepper))))
+    binding = studio.local.register_hotkey(RegisterHotkeyRequest(accelerator="Ctrl+Alt+P", project_id=project.project_id, node_id="stepper", field="increaseTrigger"))
+
+    async def run() -> None:
+        await asyncio.gather(studio._activate_hotkey(binding), studio._activate_hotkey(binding))
+
+    try:
+        asyncio.run(run())
+        assert [call[3] for call in runtime.state_calls] == [1, 2]
+        assert studio.projects.document(project.project_id).graph_revision == 1
+    finally:
+        studio.editor.close()
+        studio.platform.close()
+
+
+def test_component_without_installed_extension_remains_readable_using_embedded_policy(tmp_path: Path) -> None:
+    from f8pysdk.specs import F8StateAccess, F8StateSpec, string_schema
+    from f8studio_server.assets import ApplicationContent, VariantContent
+    from f8studio_server.errors import InvalidRequestError
+
+    def missing_spec(service_class: str, operator_class: str | None) -> F8ServiceSpec:
+        raise KeyError((service_class, operator_class))
+
+    spec = F8ServiceSpec(serviceClass="test.missing", label="Missing", stateFields=[
+        F8StateSpec(name="path", access=F8StateAccess.rw, valueSchema=string_schema(default="demo.mp4"), publishable=False),
+    ])
+    node = NodeCatalog(services=[spec]).create_service_node(node_id="missing", service_class="test.missing", state_values={"path": "private-real.mp4"})
+    repository = AssetRepository(tmp_path / "assets.sqlite3", spec_resolver=missing_spec)
+    asset = repository.create(CreateAssetRequest(kind=AssetKind.component, name="Missing", content=msgspec.to_builtins(ApplicationContent(nodes=(node,)))))
+    assert asset.content["nodes"][0]["stateValues"] == {}
+    assert b"private-real.mp4" not in msgspec.json.encode(repository.export(asset.asset_id))
+    with pytest.raises(InvalidRequestError, match="install the extension"):
+        repository.create(CreateAssetRequest(kind=AssetKind.variant, name="Missing", content=msgspec.to_builtins(VariantContent(service_class="test.missing", state_values={"path": "private-real.mp4"}))))
+
+
+def test_state_removed_later_in_atomic_patch_is_not_sent_to_runtime(tmp_path: Path) -> None:
+    from f8pysdk.specs import F8ServiceSchemaVersion, F8SpecEditPolicy, F8StateAccess, F8StateSpec, editable_collection_edit_policy, integer_schema
+    from f8studio_core.graph import SetServiceSpecOp
+
+    runtime = HotkeyRuntimeGateway()
+    studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
+    project = studio.projects.create(CreateProjectRequest(project_id="atomic", name="Atomic"))
+    spec = F8ServiceSpec(schemaVersion=F8ServiceSchemaVersion.f8service_2, serviceClass="test.editable", label="Editable", editPolicy=F8SpecEditPolicy(stateFields=editable_collection_edit_policy()),
+                         stateFields=[F8StateSpec(name="trigger", valueSchema=integer_schema(default=0), access=F8StateAccess.rw, persistent=False)])
+    studio.catalog.sdk_catalog.register_service(spec)
+    node = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="editable", service_class="test.editable"))
+    request = PatchRequest(request_id="atomic", expected_graph_revision=0, expected_layout_revision=0, operations=(
+        CreateNodeOp(node=node), SetNodeStateOp(node_id="editable", field="trigger", value=1),
+        SetServiceSpecOp(node_id="editable", spec=msgspec.structs.replace(node.spec, stateFields=[])),
+    ))
+    try:
+        result = asyncio.run(studio.tools.apply_patch(project.project_id, request))
+        assert result.graph_changed
+        assert not result.runtime_errors
+        assert runtime.state_calls == []
+        assert result.document.nodes[0].state_values == {}
+    finally:
+        studio.editor.close()
+        studio.platform.close()

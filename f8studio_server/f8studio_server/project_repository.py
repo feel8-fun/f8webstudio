@@ -298,21 +298,24 @@ class ProjectRepository:
         timestamp = utc_now_text()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            cursor = connection.execute(
-                """
-                UPDATE projects
-                SET updated_at = ?, graph_revision = ?, layout_revision = ?, document = ?
-                WHERE project_id = ?
-                """,
-                (
-                    timestamp,
-                    document.graph_revision,
-                    document.layout_revision,
-                    document_bytes,
-                    project_id,
-                ),
-            )
-            if cursor.rowcount != 1:
+            if result.graph_changed or result.layout_changed:
+                cursor = connection.execute(
+                    """
+                    UPDATE projects
+                    SET updated_at = ?, graph_revision = ?, layout_revision = ?, document = ?
+                    WHERE project_id = ?
+                    """,
+                    (
+                        timestamp,
+                        document.graph_revision,
+                        document.layout_revision,
+                        document_bytes,
+                        project_id,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise NotFoundError(f"project not found: {project_id}")
+            elif connection.execute("SELECT 1 FROM projects WHERE project_id = ?", (project_id,)).fetchone() is None:
                 raise NotFoundError(f"project not found: {project_id}")
             connection.execute(
                 """

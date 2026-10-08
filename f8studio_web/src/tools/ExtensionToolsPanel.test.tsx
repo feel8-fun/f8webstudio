@@ -9,6 +9,7 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  localStorage.clear();
   vi.mocked(fetchExtensions).mockResolvedValue([]);
   vi.mocked(fetchToolJobs).mockResolvedValue([]);
 });
@@ -32,7 +33,11 @@ describe('ExtensionToolsPanel', () => {
     fireEvent.click(screen.getByLabelText('I confirm execution of this tool with these inputs.'));
     fireEvent.click(screen.getByRole('button', { name: 'Run tool' }));
     await waitFor(() => expect(runExtensionTool).toHaveBeenCalledWith('example', 'inspect', { target: '/games/example', port: 39540 }, true));
-    expect(await screen.findByText('Target unavailable')).toBeInTheDocument();
+    await screen.findByText('Target unavailable');
+    fireEvent.click(screen.getByText('Task history · 1 records'));
+    expect(screen.getByText('Target unavailable')).not.toBeVisible();
+    fireEvent.click(screen.getByText('Result / logs'));
+    expect(screen.getByText('Target unavailable')).toBeVisible();
     expect(screen.getByText('Diagnostic detail')).toBeInTheDocument();
   });
 });
@@ -54,4 +59,24 @@ it('keeps a stream running while another tool executes, and offers Stop after re
   fireEvent.click(screen.getAllByRole('button', { name: 'Stop' })[0]!);
   await waitFor(() => expect(cancelToolJob).toHaveBeenCalledWith('stream-job'));
   expect(await screen.findByRole('button', { name: 'Run tool' })).toBeEnabled();
+});
+
+it('clears completed history across refresh and remount while preserving running jobs', async () => {
+  vi.mocked(fetchExtensionTools).mockResolvedValue([]);
+  const job = { jobId: 'done', extensionId: 'debug', extensionVersion: '1', toolId: 'inspect', arguments: {}, status: 'succeeded' as const, createdAt: '2026-10-01', updatedAt: '2026-10-01', result: { schemaVersion: 'f8toolResult/1' as const, success: true, message: 'Complete', data: { large: 'payload' } }, error: '', log: 'full log' };
+  vi.mocked(fetchToolJobs).mockResolvedValue([job, { ...job, jobId: 'live', status: 'running' }]);
+  const first = render(<ExtensionToolsPanel />);
+  await screen.findByText('Task history · 2 records');
+  expect(screen.getAllByText(/"payload"/)[0]).not.toBeVisible();
+  fireEvent.click(screen.getByText('Task history · 2 records'));
+  fireEvent.click(screen.getByRole('button', { name: 'Delete completed' }));
+  expect(screen.getByText('Task history · 1 records')).toBeInTheDocument();
+  expect(screen.queryByText('succeeded')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close history' }));
+  expect(screen.queryByRole('region', { name: 'Task history' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Show task history' }));
+  first.unmount();
+  render(<ExtensionToolsPanel />);
+  await screen.findByText('Task history · 1 records');
+  expect(screen.queryByText('succeeded')).not.toBeInTheDocument();
 });

@@ -55,7 +55,9 @@ test('updates environment and storage when a queued task completes without a pag
   api.fetchEnvironments.mockResolvedValueOnce([{ ...environment, state: 'missing', ready: false }]).mockResolvedValue([environment]);
   render(<EnvironmentsWorkspace />);
   await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-  expect(screen.getByText('queued')).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Maintenance tasks' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Tasks · 1 active' }));
+  expect(screen.getByText('queued')).toBeVisible();
   await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
   expect(screen.getByText('succeeded')).toBeInTheDocument();
   expect(screen.getByText('ready')).toBeInTheDocument();

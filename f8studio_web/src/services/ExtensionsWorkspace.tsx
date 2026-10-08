@@ -147,13 +147,13 @@ export function ExtensionsWorkspace() {
 
   return <div className="services-workspace">
     <div className="services-toolbar">
+      <ManagementTasks jobs={tasks.jobs} error={tasks.error} />
       {location ? <ExtensionLink className="extension-back" location={null} onNavigate={navigate}><ArrowLeft size={15} />All extensions</ExtensionLink> : <label className="services-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search extensions" aria-label="Search extensions" /></label>}
       <span>{extensions.length} extensions</span>
       <button className="icon-button" type="button" title="Refresh extensions" aria-label="Refresh extensions" onClick={() => { setDetailRevision((value) => value + 1); void load(); }}><RefreshCw size={16} /></button>
     </div>
     {error && <div className="services-error" role="alert">{error}</div>}
     <div className="services-body" ref={bodyRef}>
-      <ManagementTasks jobs={tasks.jobs} error={tasks.error} />
       {location ? <section className="services-extensions extension-detail-page" aria-label="Extension details">
         {selectedExtension ? <>
           {extensionCard(selectedExtension, false)}

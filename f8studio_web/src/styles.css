@@ -1178,3 +1178,27 @@ button:disabled { cursor: default; }
 }
 
 .environments-workspace .runtime-environments { margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* Histories occupy a summary line until explicitly opened. */
+.history-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.history-toolbar h2 { margin: 0 auto 0 0; font-size: 13px; }
+.history-list { padding: 10px 16px; }
+.history-list > summary { cursor: pointer; color: #94a2b3; font-size: 12px; }
+.history-records { max-height: 320px; overflow: auto; margin-top: 8px; }
+.management-tasks { padding: 10px 14px; }
+.management-tasks .extension-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px; border: 0; border-bottom: 1px solid #2c3239; border-radius: 0; }
+.management-tasks .extension-heading { flex: 1; min-width: 180px; }
+.management-tasks time, .management-tasks small { color: #94a2b3; font-size: 11px; }
+.management-tasks pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tool-job { padding: 8px 2px; }
+.tool-job > header { padding: 0; border: 0; background: none; }
+.tool-job-log { margin-top: 6px; }
+.tool-job-log p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.tool-job-log .tool-job-error { color: #e8a5a9; }
+.tool-history .tool-section-heading { flex-wrap: wrap; }
+
+.maintenance-task-menu { position: relative; flex-shrink: 0; }
+.management-tasks { position: absolute; top: calc(100% + 8px); left: 0; z-index: 50; width: min(640px, calc(100vw - 100px)); max-height: min(560px, 70vh); overflow: auto; padding: 12px; border: 1px solid #3b444d; border-radius: 6px; background: #151a21; box-shadow: 0 12px 36px #0008; }
+.management-tasks .history-toolbar > strong { margin-right: auto; }
+.tool-history-summary { padding: 10px 14px; cursor: pointer; color: #94a2b3; font-size: 12px; }
+.tool-history .history-records { margin: 0; padding: 0 14px; }

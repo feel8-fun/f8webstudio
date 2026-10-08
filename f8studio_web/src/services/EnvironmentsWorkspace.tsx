@@ -52,12 +52,12 @@ export function EnvironmentsWorkspace() {
 
   return <div className="services-workspace environments-workspace">
     <div className="services-toolbar">
+      <ManagementTasks jobs={tasks.jobs} error={tasks.error} />
       <span>{loaded ? `${environments.length} environments` : 'Loading environments…'}</span>
       <button className="icon-button" type="button" title="Refresh runtime environments" aria-label="Refresh runtime environments" onClick={() => { setRefreshRevision((value) => value + 1); void load(); }}><RefreshCw size={16} /></button>
     </div>
     {error && <div className="services-error" role="alert">{error}</div>}
     <div className="services-body">
-      <ManagementTasks jobs={tasks.jobs} error={tasks.error} />
       <div className="services-extensions">
         {loaded && <RuntimeEnvironments environments={environments} extensions={extensions} onRefresh={load} locked={false} refreshRevision={refreshRevision} />}
       </div>

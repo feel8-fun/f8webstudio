@@ -1,9 +1,12 @@
-import { ArrowRight, Clock3, Folder, Package, Play, RefreshCw, Wrench } from 'lucide-react';
+import { ArrowRight, Folder, Package, Play, RefreshCw, Wrench } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { cancelToolJob, fetchExtensions, fetchExtensionTools, fetchToolJobs, runExtensionTool } from '../api/client';
 import type { ExtensionStatus, ToolView, ToolJob, JsonValue } from '../api/contracts.gen';
 
+import { isActiveJob, useHistoryVisibility } from '../services/useHistoryVisibility';
+
 export function ExtensionToolsPanel() {
+  const history = useHistoryVisibility('f8-tool-dismissed');
   const [tools, setTools] = useState<readonly ToolView[]>([]);
   const [extensions, setExtensions] = useState<readonly ExtensionStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +52,8 @@ export function ExtensionToolsPanel() {
     if (!tools.some((item) => `${item.extensionId}/${item.toolId}` === selected)) choose(tools[0]);
   }, [tools, selected, choose]);
   const extensionIds = [...new Set(tools.map((item) => item.extensionId))];
-  const visibleJobs = showAllJobs || !tool ? jobs : jobs.filter((job) => job.extensionId === tool.extensionId && job.toolId === tool.toolId);
+  const visibleJobs = jobs.filter((job) => (isActiveJob(job.status) || !history.dismissed.includes(job.jobId)) && (showAllJobs || !tool || (job.extensionId === tool.extensionId && job.toolId === tool.toolId)));
+  const completedJobs = visibleJobs.filter((job) => !isActiveJob(job.status));
   const activeJob = jobs.find((job) => job.extensionId === tool?.extensionId && job.toolId === tool?.toolId && (job.status === 'queued' || job.status === 'running'));
   const extensionRunning = jobs.some((job) => job.extensionId === tool?.extensionId && (job.status === 'queued' || job.status === 'running') &&
     (job.toolId === tool?.toolId || !tool?.allowConcurrent || !tools.find((item) => item.extensionId === job.extensionId && item.toolId === job.toolId)?.allowConcurrent));
@@ -124,19 +128,25 @@ export function ExtensionToolsPanel() {
             </footer>
           </form>
         </> : <div className="tools-empty"><div className="tool-heading-icon"><Wrench size={28} /></div><h2>{loading ? 'Loading tools…' : 'Your tools will appear here'}</h2><p>{loading ? 'Loading installed extension tools.' : 'No tools are installed and enabled.'}</p>{!loading && <a className="command-button" href="?view=extensions"><Package size={14} />Manage extensions<ArrowRight size={14} /></a>}</div>}
-        {(tool || jobs.length > 0) && <section className="tool-history" aria-label="Task history">
-          <header className="tool-section-heading"><h3><Clock3 size={15} />Task history</h3><label className="tool-history-filter"><input type="checkbox" checked={showAllJobs} onChange={(event) => setShowAllJobs(event.target.checked)} />All tools</label></header>
+        {history.closed && <button className="command-button" onClick={() => history.setClosed(false)}>Show task history</button>}
+        {!history.closed && (tool || jobs.length > 0) && <details className="tool-history" aria-label="Task history">
+          <summary className="tool-history-summary">Task history · {visibleJobs.length} records</summary>
+          <header className="tool-section-heading"><label className="tool-history-filter"><input type="checkbox" checked={showAllJobs} onChange={(event) => setShowAllJobs(event.target.checked)} />All tools</label><button className="command-button" type="button" disabled={!completedJobs.length} onClick={() => history.dismiss(completedJobs.map((job) => job.jobId))}>Delete completed</button><button className="command-button" type="button" onClick={() => history.setClosed(true)}>Close history</button></header>
+          <div className="history-records">
           {visibleJobs.length === 0 && <p className="tool-history-empty">No tasks yet.</p>}
           {visibleJobs.map((job) => <article className="tool-job" key={job.jobId}>
-            <header><strong>{tools.find((item) => item.extensionId === job.extensionId && item.toolId === job.toolId)?.name ?? `${job.extensionId}/${job.toolId}`}</strong><span className={`tool-job-status tool-job-status-${job.status}`}>{job.status === 'cancelled' ? 'stopped' : job.status}</span><time dateTime={job.createdAt}>{new Date(job.createdAt).toLocaleString()}</time>
+            <header><strong>{tools.find((item) => item.extensionId === job.extensionId && item.toolId === job.toolId)?.name ?? `${job.extensionId}/${job.toolId}`}</strong><span className={`tool-job-status tool-job-status-${job.status}`}>{job.status === 'cancelled' ? 'stopped' : job.status}</span><small>{job.extensionId}</small><time dateTime={job.createdAt}>{new Date(job.createdAt).toLocaleString()}</time>
               {(job.status === 'queued' || job.status === 'running') && <button className="command-button" type="button" onClick={() => void cancel(job.jobId)}>Stop</button>}
             </header>
+            <details className="tool-job-log"><summary>Result / logs</summary>
             {job.result && <p>{job.result.message}</p>}
             {job.error && <p className="tool-job-error" role="alert">{job.error}</p>}
             {job.result?.data != null && <pre className="tool-result">{JSON.stringify(job.result.data, null, 2)}</pre>}
-            {job.log && <details className="tool-job-log"><summary>Task log</summary><pre>{job.log}</pre></details>}
-          </article>)}
-        </section>}
+            {job.log && <pre>{job.log}</pre>}
+            </details>
+            {!isActiveJob(job.status) && <button className="command-button" type="button" onClick={() => history.dismiss([job.jobId])}>Delete record</button>}
+          </article>)}</div>
+        </details>}
       </div>
     </div>
   </section>;

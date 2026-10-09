@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import type { GraphNode } from '../api/contracts';
 import { isPatchHub, nodePortRows } from './portRows';
 import { PORT_ROW_HEIGHT } from './projection';
+import { isBackdrop, isNote, isResizableOperator } from './nodePresentation';
+import { NoteContent } from './NoteContent';
 
 /** Shared node visuals. No runtime, catalog, network, editor or device dependencies. */
 export function StudioNodeSurface({ node, selected = false, childCount, children, outputAction,
@@ -17,6 +19,9 @@ export function StudioNodeSurface({ node, selected = false, childCount, children
   readonly commandControls?: Readonly<Record<string, ReactNode>>;
 }) {
   const rows = nodePortRows(node);
+  if (isBackdrop(node)) return <article className={`studio-node studio-node-backdrop ${selected ? 'studio-node-selected' : ''}`} aria-label={node.name}>
+    <header className="node-drag-handle"><strong>{node.name}</strong></header>
+  </article>;
   if (isPatchHub(node)) return <article className={`studio-node studio-node-operator studio-node-patch-hub ${selected ? 'studio-node-selected' : ''}`} aria-label={node.name}>
     <header className="node-drag-handle" title={node.name}><strong>{node.name}</strong></header>
     <div className="node-ports">{rows.map((row) => <div className="patch-hub-port-row" key={row.key} data-port-node={node.nodeId} data-port-id={row.input?.portId ?? row.output?.portId}>
@@ -28,7 +33,7 @@ export function StudioNodeSurface({ node, selected = false, childCount, children
   const execLabel = (name: string, direction: 'input' | 'output'): string | undefined => node.kind === 'operator'
     ? (direction === 'input' ? node.spec.execInPorts : node.spec.execOutPorts)?.find((port) => port.name === name)?.label : undefined;
   const visibleRows = rows.length === 0 ? [{ key: 'empty' }] : rows;
-  return <article className={`studio-node studio-node-${node.kind} ${node.kind === 'service' && childCount === 0 ? 'studio-node-service-compact' : ''} ${selected ? 'studio-node-selected' : ''}`}>
+  return <article className={`studio-node studio-node-${node.kind} ${isResizableOperator(node) ? 'studio-node-resizable' : ''} ${isNote(node) ? 'studio-node-note' : ''} ${node.kind === 'service' && childCount === 0 ? 'studio-node-service-compact' : ''} ${selected ? 'studio-node-selected' : ''}`}>
     <header className="node-drag-handle">
       {node.kind === 'service' ? <Boxes size={15} /> : <Box size={15} />}
       <div><strong>{node.name}</strong><span>{node.kind === 'service' ? node.serviceClass : node.operatorClass}</span></div>
@@ -36,7 +41,7 @@ export function StudioNodeSurface({ node, selected = false, childCount, children
       {node.kind === 'service' && childCount > 0 && <span className="service-child-count">{childCount} ops</span>}
       {!node.enabled && <span className="node-disabled">Off</span>}
     </header>
-    {children}
+    {isNote(node) ? <NoteContent node={node} /> : children}
     <div className="node-ports" style={{ gridTemplateRows: `repeat(${visibleRows.length}, ${PORT_ROW_HEIGHT}px)` }}>
       {visibleRows.map((row) => {
         const { input, output } = row;

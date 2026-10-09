@@ -2,6 +2,61 @@ import type { ResizeParams } from '@xyflow/react';
 import type { GraphOperation, StudioDocument } from '../api/contracts';
 import { absoluteFlowPosition, constrainOperatorPosition, operatorHeight, operatorWidth, projectDocument, serviceChildInsetY,
   OPERATOR_WIDTH, OPERATOR_MIN_HEIGHT, SERVICE_WIDTH, SERVICE_MIN_HEIGHT, STUDIO_SERVICE_CLASS, type StudioFlowNode } from './projection';
+import { isBackdrop, isResizableOperator } from './nodePresentation';
+
+export function resizeNodeOperations(document: StudioDocument, nodeId: string, bounds: ResizeParams): GraphOperation[] {
+  const node = document.nodes.find((node) => node.nodeId === nodeId);
+  if (node === undefined) throw new Error(`Node ${nodeId} is no longer available.`);
+  if (node.kind === 'service') return resizeServiceOperations(document, nodeId, bounds);
+  if (!isResizableOperator(node)) throw new Error(`${node.name} does not support resizing.`);
+  const layout = document.layout.find((layout) => layout.nodeId === nodeId);
+  return [{ op: 'setNodeLayout', layout: { nodeId, x: bounds.x, y: bounds.y,
+    width: bounds.width, height: bounds.height, collapsed: layout?.collapsed ?? false } }];
+}
+
+/** Membership is geometric, captured before the drag, and includes each node once. */
+export function backdropGroupNodeIds(backdropId: string, nodes: readonly StudioFlowNode[]): ReadonlySet<string> {
+  const backdrop = nodes.find((node) => node.id === backdropId && isBackdrop(node.data.graphNode));
+  if (backdrop === undefined) throw new Error(`Backdrop ${backdropId} is no longer available.`);
+  const position = absoluteFlowPosition(backdrop, nodes);
+  const right = position.x + Number(backdrop.style?.width ?? backdrop.measured?.width ?? 0);
+  const bottom = position.y + Number(backdrop.style?.height ?? backdrop.measured?.height ?? 0);
+  const ids = new Set([backdropId]);
+  for (const node of nodes) {
+    const point = absoluteFlowPosition(node, nodes);
+    const width = Number(node.style?.width ?? node.measured?.width ?? 0);
+    const height = Number(node.style?.height ?? node.measured?.height ?? 0);
+    if (point.x >= position.x && point.y >= position.y && point.x + width <= right && point.y + height <= bottom) ids.add(node.id);
+  }
+  // Moving a service always carries its operators, even if one overflows the frame.
+  for (const node of nodes) {
+    if (node.parentId !== undefined && ids.has(node.parentId)) ids.add(node.id);
+  }
+  return ids;
+}
+
+export function translateGroupNodes(current: StudioFlowNode[], origin: readonly StudioFlowNode[], ids: ReadonlySet<string>, delta: { x: number; y: number }): StudioFlowNode[] {
+  const originals = new Map(origin.map((node) => [node.id, node]));
+  return current.map((node) => {
+    const original = originals.get(node.id);
+    if (original === undefined || !ids.has(node.id)) return node;
+    const parentMoves = node.parentId !== undefined && ids.has(node.parentId);
+    return { ...node, position: { x: original.position.x + (parentMoves ? 0 : delta.x),
+      y: original.position.y + (parentMoves ? 0 : delta.y) } };
+  });
+}
+
+export function translateGroupOperations(document: StudioDocument, origin: readonly StudioFlowNode[], ids: ReadonlySet<string>, delta: { x: number; y: number }): GraphOperation[] {
+  if (delta.x === 0 && delta.y === 0) return [];
+  return origin.flatMap((node): GraphOperation[] => {
+    if (!ids.has(node.id)) return [];
+    const position = absoluteFlowPosition(node, origin);
+    const layout = document.layout.find((layout) => layout.nodeId === node.id);
+    return [{ op: 'setNodeLayout', layout: { nodeId: node.id, x: position.x + delta.x, y: position.y + delta.y,
+      width: layout?.width ?? Number(node.style?.width), height: layout?.height ?? Number(node.style?.height),
+      collapsed: layout?.collapsed ?? false } }];
+  });
+}
 
 export function moveNodeOperations(document: StudioDocument, node: StudioFlowNode, nodes: readonly StudioFlowNode[], pointer?: { readonly x: number; readonly y: number }): GraphOperation[] {
   const projected = projectDocument(document);

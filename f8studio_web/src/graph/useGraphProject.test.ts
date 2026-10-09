@@ -6,7 +6,7 @@ import { useGraphProject } from './useGraphProject';
 
 const api = vi.hoisted(() => ({
   fetchProjects: vi.fn(), fetchProject: vi.fn(), fetchLatestDeployment: vi.fn(), fetchCatalog: vi.fn(),
-  patchProject: vi.fn(), changeHistory: vi.fn(), createProject: vi.fn(), deleteProject: vi.fn(),
+  patchProject: vi.fn(), changeHistory: vi.fn(), createProject: vi.fn(), deleteProject: vi.fn(), updateProject: vi.fn(),
   exportProjectGraph: vi.fn(), importProjectGraph: vi.fn(), refreshCatalog: vi.fn(),
 }));
 const events = vi.hoisted(() => ({ subscribe: vi.fn(), unsubscribe: vi.fn() }));
@@ -78,4 +78,30 @@ test('late graph events cannot roll back a newer revision and unsubscribe on unm
   expect(result.current.project?.document.graphRevision).toBe(3);
   unmount();
   expect(events.unsubscribe).toHaveBeenCalledTimes(1);
+});
+
+test('renaming preserves the description and newer graph events received during the request', async () => {
+  let receive: (event: StudioEvent) => void = () => {};
+  events.subscribe.mockImplementation((listener: typeof receive) => { receive = listener; return events.unsubscribe; });
+  const record = { ...initial, description: 'Keep this description' };
+  api.fetchProject.mockResolvedValue(record);
+  const { result } = renderHook(() => useGraphProject(reset, report));
+  await waitFor(() => expect(result.current.project).toEqual(record));
+  const renamed = { ...record, name: '新版项目', updatedAt: '2026-10-08T12:00:00Z' };
+  api.updateProject.mockImplementation(async () => {
+    receive({ type: 'graph.committed', scope: 'project:p', serverEpoch: 'test', sequence: 1, eventId: '1', timestamp: '',
+      payload: { document: { ...record.document, graphRevision: 3, layoutRevision: 2 } } });
+    return renamed;
+  });
+  await act(async () => { expect(await result.current.renameProject('  新版项目  ')).toBe(true); });
+  expect(api.updateProject).toHaveBeenCalledWith('p', { name: '新版项目', description: record.description });
+  expect(result.current.project).toMatchObject({ name: '新版项目', description: record.description,
+    document: { graphRevision: 3, layoutRevision: 2 } });
+  expect(result.current.projects[0]?.name).toBe('新版项目');
+  expect(result.current.busy).toBe(false);
+  act(() => receive({ type: 'project.updated', scope: 'project:p', serverEpoch: 'test', sequence: 2, eventId: '2', timestamp: '',
+    payload: { ...renamed, name: 'Renamed in another tab' } }));
+  expect(result.current.project?.name).toBe('Renamed in another tab');
+  expect(result.current.projects[0]?.name).toBe('Renamed in another tab');
+  expect(result.current.project?.document.graphRevision).toBe(3);
 });

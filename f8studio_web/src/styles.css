@@ -636,8 +636,9 @@ button:disabled { cursor: default; }
 
 .project-control { padding: 11px; border-bottom: 1px solid #292e35; }
 .project-control > label { display: block; margin-bottom: 6px; color: #8e96a1; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-.project-control > div { display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; gap: 6px; }
-.project-control select {
+.project-control > div { display: grid; grid-template-columns: minmax(0, 1fr) repeat(3, 30px); gap: 6px; }
+.project-rename { display: grid; grid-template-columns: minmax(0, 1fr) 30px 30px; gap: 6px; }
+.project-control select, .project-control input {
   min-width: 0;
   height: 30px;
   padding: 0 6px;
@@ -858,8 +859,9 @@ button:disabled { cursor: default; }
   .graph-inspector-resizer { display: none; }
   .graph-inspector { display: none; }
   .project-control { padding: 7px; }
-  .project-control > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .project-control select { grid-column: 1 / -1; }
+  .project-control > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .project-control .project-rename { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .project-control select, .project-control input { grid-column: 1 / -1; }
   .project-control .small-icon-button { width: 100%; }
   .catalog-search { margin: 7px; }
   .catalog-list { padding: 0 5px 8px; }

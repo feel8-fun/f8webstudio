@@ -52,3 +52,18 @@ test('renders embedded definitions without runtime, installed catalog or active 
   expect(flowProps.mock.calls[0]?.[0]).toMatchObject({ nodesDraggable: false, nodesConnectable: false,
     edgesReconnectable: false, elementsSelectable: false, deleteKeyCode: null });
 });
+
+test('renders Markdown notes and transparent Backdrop frames in offline previews', () => {
+  const host = document.nodes[0]!;
+  const base = document.nodes[1]!;
+  if (base.kind !== 'operator') throw new Error('Invalid preview fixture');
+  const note = { ...base, nodeId: 'note', name: 'Documentation', operatorClass: 'f8.note',
+    ports: [], stateValues: { content: '# Embedded documentation\n\n**Offline** preview' },
+    spec: { ...base.spec, operatorClass: 'f8.note', rendererClass: 'note_markdown', commands: [], stateFields: [] } };
+  const backdrop = { ...note, nodeId: 'frame', name: 'My group', operatorClass: 'f8.backdrop',
+    spec: { ...note.spec, operatorClass: 'f8.backdrop', rendererClass: 'backdrop' } };
+  const view = render(<GraphView document={{ ...document, nodes: [host, note, backdrop] }} />);
+  expect(screen.getByRole('heading', { name: 'Embedded documentation' })).toBeInTheDocument();
+  expect(view.container.querySelector('.studio-node-backdrop')).toHaveTextContent('My group');
+  expect(view.container.querySelector('.service-resize-handle')).toBeNull();
+});

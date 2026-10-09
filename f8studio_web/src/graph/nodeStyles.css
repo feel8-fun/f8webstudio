@@ -79,6 +79,29 @@
 .react-flow__edge.selected .react-flow__edge-path { stroke-width: 3; filter: drop-shadow(0 0 2px rgb(255 255 255 / 35%)); }
 .studio-node-patch-hub header { display: flex; min-height: 22px; height: 22px; padding: 2px 6px; border-top: 0; justify-content: center; }
 .studio-node-patch-hub header strong { font-size: 9px; }
+.studio-node-resizable { display: flex; flex-direction: column; }
+.studio-node-resizable > header, .studio-node-resizable > .node-ports { flex: none; }
+.studio-node-resizable > :is(.studio-node-inline-video, .studio-node-inline-audio, .studio-node-inline-three, .studio-node-inline-data) { flex: 1; height: auto; min-height: 0; min-width: 0; }
+.studio-node-resizable .presentation-audio-compact { width: 100%; height: 100%; min-height: 0; }
+.studio-node-note-content { flex: 1; min-height: 0; padding: 10px 14px; overflow: auto; color: #e0e3e8; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; user-select: text; }
+.studio-node-note-content > :first-child { margin-top: 0; }
+.studio-node-note-content > :last-child { margin-bottom: 0; }
+.studio-node-note-content h1 { font-size: 20px; }
+.studio-node-note-content h2 { font-size: 17px; }
+.studio-node-note-content h3 { font-size: 14px; }
+.studio-node-note-content a { color: #90c8ed; text-decoration: underline; }
+.studio-node-note-content pre { padding: 8px; overflow: auto; background: #11151a; white-space: pre; }
+.studio-node-note-content code { font-family: "SFMono-Regular", Consolas, monospace; background: #11151a; }
+.studio-node-note-content blockquote { margin-left: 0; padding-left: 12px; border-left: 3px solid #6486a0; color: #acb9c5; }
+.studio-node-note-content table { width: 100%; border-collapse: collapse; }
+.studio-node-note-content th, .studio-node-note-content td { padding: 4px 8px; border: 1px solid #46505b; }
+.studio-node-note-content img { max-width: 100%; }
+.studio-node-note > .node-ports { display: none; }
+.flow-node-backdrop { pointer-events: none !important; }
+.studio-node-backdrop { width: 100%; height: 100%; background: rgb(74 85 110 / 14%); border: 2px solid #65738f; box-shadow: none; }
+.studio-node-backdrop > header { display: flex; height: 34px; border: 0; background: rgb(74 85 110 / 75%); cursor: grab; pointer-events: auto; }
+.studio-node-backdrop > header strong { font-size: 12px; }
+.flow-node-backdrop .react-flow__resize-control { pointer-events: auto; }
 .patch-hub-port-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) 8px; align-items: center; height: 24px; }
 .patch-hub-port-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; font-size: 9px; color: #aab1ba; }
 

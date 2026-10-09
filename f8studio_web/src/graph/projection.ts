@@ -2,6 +2,7 @@ import { MarkerType, type Edge, type Node, type XYPosition } from '@xyflow/react
 
 import type { GraphNode, GraphOperation, NodeLayout, StudioDocument } from '../api/contracts';
 import { isPatchHub, nodePortRows } from './portRows';
+import { isBackdrop, isNote, isResizableOperator, operatorMinimumSize } from './nodePresentation';
 
 export const SERVICE_WIDTH = 524;
 export const SERVICE_MIN_HEIGHT = 240;
@@ -106,6 +107,8 @@ export function reconcileProjectedEdges(current: Edge[], projected: readonly Edg
 }
 
 export function operatorHeight(node: GraphNode): number {
+  if (isBackdrop(node)) return 360;
+  if (isNote(node)) return 240;
   if (isPatchHub(node)) return PATCH_HUB_CHROME + Math.max(1, nodePortRows(node).length) * PORT_ROW_HEIGHT;
   const previewHeight = node.kind === 'operator' &&
     (node.operatorClass === 'f8.viz.video' || node.spec.rendererClass === 'viz_video' ||
@@ -124,6 +127,8 @@ export function operatorHeight(node: GraphNode): number {
 }
 
 export function operatorWidth(node: GraphNode): number {
+  if (isBackdrop(node)) return 600;
+  if (isNote(node)) return 320;
   return isPatchHub(node) ? PATCH_HUB_WIDTH : OPERATOR_WIDTH;
 }
 
@@ -241,6 +246,10 @@ export function projectDocument(document: StudioDocument): {
     const parent = serviceFlowNodes.get(operator.serviceId);
     if (parent === undefined) throw new Error(`Missing service container ${operator.serviceId} for ${operator.nodeId}`);
     const layout = layouts.get(operator.nodeId);
+    const size = {
+      width: isResizableOperator(operator) ? Math.max(operatorMinimumSize(operator).width, layout?.width ?? operatorWidth(operator)) : operatorWidth(operator),
+      height: isResizableOperator(operator) ? Math.max(operatorMinimumSize(operator).height, layout?.height ?? operatorHeight(operator)) : operatorHeight(operator),
+    };
     const defaultPosition = defaultPositions.get(operator.nodeId) ?? { x: CONTAINER_INSET_X, y: CONTAINER_INSET_Y };
     const absolute = layout === undefined
       ? {
@@ -252,12 +261,12 @@ export function projectDocument(document: StudioDocument): {
       return {
         id: operator.nodeId,
         type: 'studio',
-        className: 'flow-node-operator',
+        className: isBackdrop(operator) ? 'flow-node-backdrop' : 'flow-node-operator',
         dragHandle: '.node-drag-handle',
-        style: { width: operatorWidth(operator), height: operatorHeight(operator) },
+        style: size,
         position: absolute,
         data: { graphNode: operator, childCount: 0 },
-        zIndex: 1,
+        zIndex: isBackdrop(operator) ? -1 : 1,
       };
     }
     const width = typeof parent.style?.width === 'number' ? parent.style.width : SERVICE_WIDTH;
@@ -269,7 +278,7 @@ export function projectDocument(document: StudioDocument): {
       dragHandle: '.node-drag-handle',
       parentId: parent.id,
       style: { width: operatorWidth(operator), height: operatorHeight(operator) },
-      position: constrainOperatorPosition(
+      position: layout !== undefined ? { x: absolute.x - parent.position.x, y: absolute.y - parent.position.y } : constrainOperatorPosition(
         { x: absolute.x - parent.position.x, y: absolute.y - parent.position.y },
         width,
         height,
@@ -282,7 +291,12 @@ export function projectDocument(document: StudioDocument): {
     };
   });
   return {
-    nodes: [...serviceNodes, ...operatorNodes],
+    nodes: [
+      ...operatorNodes.filter((node) => isBackdrop(node.data.graphNode)).sort((left, right) =>
+        Number(right.style?.width) * Number(right.style?.height) - Number(left.style?.width) * Number(left.style?.height)),
+      ...serviceNodes,
+      ...operatorNodes.filter((node) => !isBackdrop(node.data.graphNode)),
+    ],
     edges: document.edges.map((edge) => ({
       id: edge.edgeId,
       source: edge.fromNodeId,

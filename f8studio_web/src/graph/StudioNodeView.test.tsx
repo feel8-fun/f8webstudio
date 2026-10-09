@@ -10,6 +10,7 @@ const presentationOutput = vi.hoisted(() => vi.fn());
 const emulatorWrite = vi.hoisted(() => vi.fn());
 vi.mock('../presentation/PresentationStore', () => ({ usePresentationOutput: presentationOutput }));
 vi.mock('osr-emu', () => ({ OSREmulator: class { write = emulatorWrite; destroy() {} } }));
+vi.mock('../three/SkeletonOutputPreview', () => ({ SkeletonOutputPreview: () => <div>3D preview</div> }));
 vi.mock('../presentation/PresentationWave', () => ({
   PresentationWave: ({ payload }: { payload: { series: unknown } }) => <div data-testid="wave-content">{JSON.stringify(payload.series)}</div>,
 }));
@@ -25,6 +26,45 @@ vi.mock('./useRuntimeNodeState', () => ({
 
 afterEach(cleanup);
 
+test('renders saved and default Note content as Markdown without deployment', () => {
+  const node: OperatorNode = {
+    kind: 'operator', nodeId: 'note', serviceId: 'studio', serviceClass: 'f8.pystudio', operatorClass: 'f8.note',
+    name: 'Instructions', enabled: true, ports: [], portIds: {}, stateValues: {},
+    spec: { specKind: 'operator', serviceClass: 'f8.pystudio', operatorClass: 'f8.note', label: 'Note',
+      rendererClass: 'note_markdown', stateFields: [{ name: 'content', access: 'rw', showOnNode: false,
+        valueSchema: { type: 'string', default: '# Default note\n\n**Read this**' } }] },
+  };
+  const props = { id: 'note', data: { graphNode: node, childCount: 0 }, selected: false } as NodeProps<StudioFlowNode>;
+  const view = render(<ReactFlowProvider><StudioNodeView {...props} /></ReactFlowProvider>);
+  expect(screen.getByRole('heading', { name: 'Default note' })).toBeInTheDocument();
+  view.rerender(<ReactFlowProvider><StudioNodeView {...props} data={{ ...props.data, graphNode: { ...node,
+    stateValues: { content: '# Saved instructions\n\n- **First step**\n\n[Docs](https://example.com)\n\n[Bad](javascript:alert(1))\n\n<script>alert(1)</script>' },
+  } }} /></ReactFlowProvider>);
+  expect(screen.getByRole('heading', { name: 'Saved instructions' })).toBeInTheDocument();
+  expect(screen.getByText('First step').tagName).toBe('STRONG');
+  expect(screen.getByRole('link', { name: 'Docs' })).toHaveAttribute('rel', 'noopener noreferrer');
+  expect(view.container.querySelector('script')).toBeNull();
+  expect(view.container.querySelector('a[href^="javascript:"]')).toBeNull();
+});
+
+test.each(['text', 'wave', 'video', 'audio', 'track', 'three_d', 'tcode', 'note', 'backdrop'])('shows selected %s resize handles only in the editor', (kind) => {
+  const operatorClass = ['note', 'backdrop'].includes(kind) ? `f8.${kind}` : `f8.viz.${kind}`;
+  const node: OperatorNode = { kind: 'operator', nodeId: 'sized', serviceId: 'studio', serviceClass: 'f8.pystudio',
+    operatorClass, name: kind, enabled: true, ports: [], portIds: {}, stateValues: {},
+    spec: { specKind: 'operator', serviceClass: 'f8.pystudio', operatorClass, label: kind },
+  };
+  presentationOutput.mockReturnValue(undefined);
+  const props = { id: node.nodeId, data: { graphNode: node, childCount: 0 }, selected: true } as NodeProps<StudioFlowNode>;
+  const interaction = { busy: false, pendingCommands: new Set<string>(), connectedStateInputs: new Set<string>(),
+    resizeNode: vi.fn(), setState: vi.fn(), openCommand: vi.fn(), showOutput: vi.fn() };
+  const view = render(<ReactFlowProvider><GraphNodeInteractionContext.Provider value={interaction}>
+    <StudioNodeView {...props} />
+  </GraphNodeInteractionContext.Provider></ReactFlowProvider>);
+  expect(view.container.querySelectorAll('.service-resize-handle')).toHaveLength(4);
+  view.rerender(<ReactFlowProvider><StudioNodeView {...props} /></ReactFlowProvider>);
+  expect(view.container.querySelector('.service-resize-handle')).toBeNull();
+});
+
 test('renders patch hub terminals without state widgets or runtime values', () => {
   const state: StateSpec = { name: 'port', access: 'rw', showOnNode: true, valueSchema: { type: 'any' } };
   const node: OperatorNode = {
@@ -38,7 +78,7 @@ test('renders patch hub terminals without state widgets or runtime values', () =
   };
   const props = { id: 'hub', data: { graphNode: node, childCount: 0 }, selected: true } as NodeProps<StudioFlowNode>;
   const { container } = render(<ReactFlowProvider>
-    <GraphNodeInteractionContext.Provider value={{ busy: false, pendingCommands: new Set(), connectedStateInputs: new Set(), resizeService: vi.fn(), setState: vi.fn(), openCommand: vi.fn(), showOutput: vi.fn() }}>
+    <GraphNodeInteractionContext.Provider value={{ busy: false, pendingCommands: new Set(), connectedStateInputs: new Set(), resizeNode: vi.fn(), setState: vi.fn(), openCommand: vi.fn(), showOutput: vi.fn() }}>
       <StudioNodeView {...props} />
     </GraphNodeInteractionContext.Provider>
   </ReactFlowProvider>);
@@ -124,7 +164,7 @@ test('shows a live device selector on a write-only service state port', () => {
     busy: false,
     pendingCommands: new Set<string>(),
     connectedStateInputs: new Set<string>(),
-    resizeService: vi.fn(),
+    resizeNode: vi.fn(),
     setState,
     openCommand: vi.fn(),
     showOutput: vi.fn(),

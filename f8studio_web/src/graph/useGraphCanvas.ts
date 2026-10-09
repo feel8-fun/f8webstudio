@@ -1,4 +1,4 @@
-import { moveNodeOperations, resizeServiceOperations } from './layoutEdits';
+import { backdropGroupNodeIds, moveNodeOperations, resizeNodeOperations, translateGroupNodes, translateGroupOperations } from './layoutEdits';
 import { useEdgesState, useNodesInitialized, useNodesState, useReactFlow, useUpdateNodeInternals, type Connection, type Edge, type FinalConnectionState, type Node, type OnNodeDrag, type ResizeParams } from '@xyflow/react';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -10,6 +10,7 @@ import { connectionError, edgeKindForPort, inputConnectionOperations } from './c
 import { absoluteFlowPosition, COMPACT_SERVICE_WIDTH, compactServiceHeight, constrainOperatorPosition, duplicateFragment, OPERATOR_MIN_HEIGHT, OPERATOR_WIDTH, operatorHeight, operatorWidth, projectDocument, reconcileProjectedEdges, reconcileProjectedNodes, SERVICE_MIN_HEIGHT, SERVICE_WIDTH, serviceChildInsetY, STUDIO_SERVICE_CLASS, type StudioFlowNode } from './projection';
 
 import { errorMessage, newId } from './workspaceUtils';
+import { isBackdrop } from './nodePresentation';
 const STUDIO_SERVICE_ID = 'studio';
 
 function visibleServicePosition(
@@ -344,18 +345,42 @@ export function useGraphCanvas({ project, busy, setBusy, setError, commit, reloa
     void commit(deleted.map((edge): GraphOperation => ({ op: 'disconnectEdge', edgeId: edge.id })));
   }, [commit, selectedEdgeId]);
 
+  const backdropDrag = useRef<{ nodeId: string; origin: readonly StudioFlowNode[]; ids: ReadonlySet<string> } | null>(null);
+  const beginNodeDrag: OnNodeDrag<StudioFlowNode> = useCallback((_event, node) => {
+    backdropDrag.current = isBackdrop(node.data.graphNode)
+      ? { nodeId: node.id, origin: nodes, ids: backdropGroupNodeIds(node.id, nodes) } : null;
+  }, [nodes]);
+  const dragNode: OnNodeDrag<StudioFlowNode> = useCallback((_event, node) => {
+    const group = backdropDrag.current;
+    if (group === null || group.nodeId !== node.id) return;
+    const start = group.origin.find((candidate) => candidate.id === node.id);
+    if (start === undefined) return;
+    const delta = { x: node.position.x - start.position.x, y: node.position.y - start.position.y };
+    setNodes((current) => translateGroupNodes(current, group.origin, group.ids, delta));
+  }, [setNodes]);
   const moveNode: OnNodeDrag<StudioFlowNode> = useCallback((event, node) => {
     if (project === null || busy) return;
     const touch = 'changedTouches' in event ? event.changedTouches.item(0) : null;
     const pointer = 'clientX' in event ? { x: event.clientX, y: event.clientY }
       : touch === null ? undefined : { x: touch.clientX, y: touch.clientY };
     try {
+      const group = backdropDrag.current;
+      backdropDrag.current = null;
+      if (group !== null && group.nodeId === node.id) {
+        const start = group.origin.find((candidate) => candidate.id === node.id);
+        if (start === undefined) return;
+        const delta = { x: node.position.x - start.position.x, y: node.position.y - start.position.y };
+        setNodes((current) => translateGroupNodes(current, group.origin, group.ids, delta));
+        const operations = translateGroupOperations(project.document, group.origin, group.ids, delta);
+        if (operations.length > 0) void commit(operations);
+        return;
+      }
       void commit(moveNodeOperations(project.document, node, nodes, pointer === undefined ? undefined : screenToFlowPosition(pointer)));
     } catch (reason) {
       restoreProjection();
       setError(errorMessage(reason));
     }
-  }, [busy, commit, nodes, project, restoreProjection, screenToFlowPosition]);
+  }, [busy, commit, nodes, project, restoreProjection, screenToFlowPosition, setNodes]);
 
   const duplicateSelection = useCallback(() => {
     if (project === null || busy) return;
@@ -408,23 +433,23 @@ export function useGraphCanvas({ project, busy, setBusy, setError, commit, reloa
   }, [commit]);
   const commitRef = useRef(commit);
   commitRef.current = commit;
-  const resizeServiceRef = useRef<(nodeId: string, bounds: ResizeParams) => void>(() => undefined);
-  resizeServiceRef.current = (nodeId, bounds) => {
+  const resizeNodeRef = useRef<(nodeId: string, bounds: ResizeParams) => void>(() => undefined);
+  resizeNodeRef.current = (nodeId, bounds) => {
     if (project === null || busy) return;
     try {
-      void commitRef.current(resizeServiceOperations(project.document, nodeId, bounds));
+      void commitRef.current(resizeNodeOperations(project.document, nodeId, bounds));
     } catch (reason) {
       restoreProjection();
       setError(errorMessage(reason));
     }
   };
-  const resizeService = useCallback((nodeId: string, bounds: ResizeParams) => {
-    resizeServiceRef.current(nodeId, bounds);
+  const resizeNode = useCallback((nodeId: string, bounds: ResizeParams) => {
+    resizeNodeRef.current(nodeId, bounds);
   }, []);
   const setNodeState = useCallback((nodeId: string, field: string, value: JsonValue) => {
     void commitRef.current([{ op: 'setNodeState', nodeId, field, value }]);
   }, []);
   return { nodes, edges, onNodesChange, onEdgesChange, graphCanvasRef, selectedNode, selectedEdge, addSpec, connect, connectionEnded, isValidConnection,
-    deleteNodes, deleteEdges, moveNode, duplicateSelection, bindOperatorService, connectedStateInputs,
-    replaceEdge, removeEdge, resizeService, setNodeState };
+    deleteNodes, deleteEdges, beginNodeDrag, dragNode, moveNode, duplicateSelection, bindOperatorService, connectedStateInputs,
+    replaceEdge, removeEdge, resizeNode, setNodeState };
 }

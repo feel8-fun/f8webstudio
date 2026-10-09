@@ -6,7 +6,7 @@ import { useGraphCanvas } from './useGraphCanvas';
 import { useGraphCommands } from './useGraphCommands';
 import { useProjectDeployment } from './useProjectDeployment';
 import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type Edge } from '@xyflow/react';
-import { Bot, Box, Copy, Download, Play, Plus, Redo2, RotateCcw, Share2, Square, Trash2, Upload, X } from 'lucide-react';
+import { Bot, Box, Copy, Download, Play, Plus, Redo2, RotateCcw, Share2, Square, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { useLivePrefix } from '../api/liveStore';
@@ -18,6 +18,7 @@ import { GraphNodeInteractionContext, StudioNodeView } from './StudioNodeView';
 import { CommandDialog } from './CommandDialog';
 
 import { NodeCatalog } from './NodeCatalog';
+import { ProjectControl } from './ProjectControl';
 import { NodeQuickSearch } from './NodeQuickSearch';
 import { PortContextMenu, type PortMenuTarget } from './PortContextMenu';
 import { canPastePortType, pastePortTypeOperation, type CopiedPortType } from './portType';
@@ -55,11 +56,11 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   const projectState = useGraphProject(resetSelection, reportCommand);
   const { projects, selectedProjectId, project, catalog, busy, setBusy, saving, error, setError,
     deployment, setDeployment, setCatalog, refreshingCatalog, reloadProject, commit,
-    selectProject, addProject, removeProject, history, downloadGraph, uploadGraph, refreshNodeCatalog } = projectState;
+    selectProject, addProject, removeProject, renameProject, history, downloadGraph, uploadGraph, refreshNodeCatalog } = projectState;
   const canvas = useGraphCanvas({ project, busy, setBusy, setError, commit, reloadProject, selectedNodeId, selectedEdgeId, setSelectedNodeId, setSelectedEdgeId });
   const { nodes, edges, onNodesChange, onEdgesChange, graphCanvasRef, selectedNode, selectedEdge, addSpec, connect, connectionEnded, isValidConnection,
-    deleteNodes, deleteEdges, moveNode, duplicateSelection, bindOperatorService, connectedStateInputs,
-    replaceEdge, removeEdge, resizeService, setNodeState } = canvas;
+    deleteNodes, deleteEdges, beginNodeDrag, dragNode, moveNode, duplicateSelection, bindOperatorService, connectedStateInputs,
+    replaceEdge, removeEdge, resizeNode, setNodeState } = canvas;
   const { stopping, deploy, stop, restartService } = useProjectDeployment({
     project, busy, setBusy, setError, setCatalog, setDeployment, refreshingCatalog, reportCommand,
   });
@@ -91,11 +92,11 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
     busy,
     pendingCommands,
     connectedStateInputs,
-    resizeService,
+    resizeNode,
     setState: setNodeState,
     openCommand,
     showOutput: onShowOutput,
-  }), [busy, pendingCommands, connectedStateInputs, resizeService, setNodeState, openCommand, onShowOutput]);
+  }), [busy, pendingCommands, connectedStateInputs, resizeNode, setNodeState, openCommand, onShowOutput]);
   const selectedMonitor = selectedNode === null ? null : monitors.find((monitor) => monitor.nodeId === selectedNode.nodeId) ??
     (selectedNode.kind === 'service' ? monitors.find((monitor) => monitor.serviceId === selectedNode.serviceId) ?? null : null);
   const locked = busy || saving;
@@ -129,17 +130,8 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   return (
     <div className="graph-workspace" ref={graphWorkspaceRef} style={{ '--inspector-width': `${inspectorWidth}px` } as CSSProperties}>
       <aside className="graph-palette" aria-label="Node catalog">
-        <div className="project-control">
-          <label htmlFor="project-select">Project</label>
-          <div>
-            <select id="project-select" value={selectedProjectId ?? ''} disabled={locked} onChange={(event) => void selectProject(event.target.value)}>
-              <option value="" disabled>Select project</option>
-              {projects.map((item) => <option key={item.projectId} value={item.projectId}>{item.name}</option>)}
-            </select>
-            <button type="button" className="small-icon-button" title="New project" aria-label="New project" disabled={locked} onClick={() => void addProject()}><Plus size={16} /></button>
-            <button type="button" className="small-icon-button" title="Delete project" aria-label="Delete project" disabled={locked || selectedProjectId === null} onClick={() => void removeProject()}><Trash2 size={15} /></button>
-          </div>
-        </div>
+        <ProjectControl key={selectedProjectId} projects={projects} selectedProjectId={selectedProjectId} disabled={locked}
+          onSelect={selectProject} onAdd={addProject} onRemove={removeProject} onRename={renameProject} />
         <NodeCatalog catalog={catalog} projectServiceClasses={new Set(project?.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))}
           canAdd={!busy && !refreshingCatalog && project !== null} refreshing={busy || refreshingCatalog}
           onAdd={(spec) => void addSpec(spec)} onRefresh={() => void refreshNodeCatalog()} />
@@ -192,6 +184,8 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
             isValidConnection={isValidConnection}
             onNodesDelete={deleteNodes}
             onEdgesDelete={deleteEdges}
+            onNodeDragStart={beginNodeDrag}
+            onNodeDrag={dragNode}
             onNodeDragStop={moveNode}
             onNodeClick={(_event, node) => {
               setSelectedNodeId(node.id);

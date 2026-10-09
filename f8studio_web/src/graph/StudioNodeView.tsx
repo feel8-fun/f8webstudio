@@ -15,12 +15,13 @@ import { SERVICE_MIN_HEIGHT, SERVICE_WIDTH, type StudioFlowNode } from './projec
 import { StateFieldControl, stateOptionPoolField } from './StateFieldControl';
 import { useRuntimeNodeState } from './useRuntimeNodeState';
 import { StudioNodeSurface } from './StudioNodeSurface';
+import { isResizableOperator, operatorMinimumSize } from './nodePresentation';
 
 export interface GraphNodeInteraction {
   readonly busy: boolean;
   readonly pendingCommands: ReadonlySet<string>;
   readonly connectedStateInputs: ReadonlySet<string>;
-  readonly resizeService: (nodeId: string, bounds: ResizeParams) => void;
+  readonly resizeNode: (nodeId: string, bounds: ResizeParams) => void;
   readonly setState: (nodeId: string, field: string, value: JsonValue) => void;
   readonly openCommand: (node: GraphNode, command: CommandSpec) => void;
   readonly showOutput: (nodeId: string) => void;
@@ -127,13 +128,13 @@ export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
   }
 
   return <>
-    {node.kind === 'service' && data.childCount > 0 && <NodeResizer
-      isVisible={selected && interaction?.busy !== true}
-      minWidth={SERVICE_WIDTH}
-      minHeight={SERVICE_MIN_HEIGHT}
+    {((node.kind === 'service' && data.childCount > 0) || isResizableOperator(node)) && interaction !== null && <NodeResizer
+      isVisible={selected && !interaction.busy}
+      minWidth={node.kind === 'service' ? SERVICE_WIDTH : operatorMinimumSize(node).width}
+      minHeight={node.kind === 'service' ? SERVICE_MIN_HEIGHT : operatorMinimumSize(node).height}
       handleClassName="service-resize-handle"
       lineClassName="service-resize-line"
-      onResizeEnd={(_event, bounds) => interaction?.resizeService(node.nodeId, bounds)}
+      onResizeEnd={(_event, bounds) => interaction.resizeNode(node.nodeId, bounds)}
     />}
     <StudioNodeSurface node={node} selected={selected} childCount={data.childCount}
       stateControls={stateControls} commandControls={commandControls}

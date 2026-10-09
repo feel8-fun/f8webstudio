@@ -1,8 +1,8 @@
 import type { ExcludedState } from "../api/contracts.gen";
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { changeHistory, createProject, deleteProject, exportProjectGraph, exportSharedProjectGraph, fetchCatalog, fetchLatestDeployment, fetchProject, fetchProjects, importProjectGraph, patchProject, refreshCatalog } from '../api/client';
-import { isStudioDocument } from '../api/contracts';
+import { changeHistory, createProject, deleteProject, exportProjectGraph, exportSharedProjectGraph, fetchCatalog, fetchLatestDeployment, fetchProject, fetchProjects, importProjectGraph, patchProject, refreshCatalog, updateProject } from '../api/client';
+import { isProjectRecord, isStudioDocument } from '../api/contracts';
 import { studioEvents } from '../api/eventStream';
 
 import type { CatalogSnapshot, DeployJob, GraphOperation, ProjectRecord, ProjectSummary } from '../api/contracts';
@@ -26,6 +26,13 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
   const projectRef = useRef<ProjectRecord | null>(null);
   const projectId = project?.projectId ?? null;
   projectRef.current = project;
+
+  const applyProjectMetadata = useCallback((record: ProjectRecord) => {
+    const metadata = { name: record.name, description: record.description, updatedAt: record.updatedAt };
+    setProjects((current) => current.map((item) => item.projectId === record.projectId ? { ...item, ...metadata } : item));
+    // Metadata responses must not replace a newer graph received during the request.
+    setProject((current) => current?.projectId === record.projectId ? { ...current, ...metadata } : current);
+  }, []);
 
   const reloadProject = useCallback(async (projectId: string) => {
     const [loaded, latestDeployment] = await Promise.all([
@@ -85,6 +92,10 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
         });
     };
     const unsubscribe = studioEvents.subscribe((envelope) => {
+        if (envelope.type === 'project.updated' && envelope.scope === `project:${projectId}` && isProjectRecord(envelope.payload)) {
+          applyProjectMetadata(envelope.payload);
+          return;
+        }
         if (envelope.type === 'project.deleted' && envelope.scope === `project:${projectId}`) {
           setProjects((current) => current.filter((item) => item.projectId !== projectId));
           setProject(null);
@@ -114,7 +125,7 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
         });
     }, refresh);
     return () => { disposed = true; unsubscribe(); };
-  }, [projectId, reloadProject, resetSelection]);
+  }, [projectId, reloadProject, resetSelection, applyProjectMetadata]);
 
   const mutateProject = useCallback((targetId: string, operation: (current: ProjectRecord) => Promise<ProjectRecord>): Promise<void> => {
     setSaving(true);
@@ -219,6 +230,29 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     }
   }, [busy, projects, saving, selectProject, selectedProjectId, resetSelection, mutations]);
 
+  const renameProject = useCallback(async (name: string): Promise<boolean> => {
+    const current = projectRef.current;
+    if (current === null || busy || saving || mutations.pending > 0) return false;
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Project name must be non-empty.');
+      return false;
+    }
+    if (trimmed === current.name) return true;
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await updateProject(current.projectId, { name: trimmed, description: current.description });
+      applyProjectMetadata(updated);
+      return true;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, saving, mutations, applyProjectMetadata]);
+
   const history = useCallback(async (action: 'undo' | 'redo') => {
     if (project === null || busy) return;
     setBusy(true);
@@ -287,5 +321,5 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
 
   return { projects, selectedProjectId, project, catalog, busy, setBusy, saving, error, setError,
     deployment, setDeployment, setCatalog, refreshingCatalog, reloadProject, commit,
-    selectProject, addProject, removeProject, history, downloadGraph, uploadGraph, refreshNodeCatalog };
+    selectProject, addProject, removeProject, renameProject, history, downloadGraph, uploadGraph, refreshNodeCatalog };
 }

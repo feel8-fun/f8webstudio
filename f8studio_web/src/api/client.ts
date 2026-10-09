@@ -254,6 +254,13 @@ export async function createProject(name: string, signal?: AbortSignal): Promise
   return body;
 }
 
+export async function updateProject(projectId: string, input: Wire.UpdateProjectRequestInput): Promise<ProjectRecord> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}`,
+    jsonRequest('PUT /api/projects/{project_id}', input));
+  if (!isProjectRecord(body)) throw new Error('Updated project does not match f8studio-api/1');
+  return body;
+}
+
 export async function deleteProject(projectId: string): Promise<void> {
   await requestJson(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
 }

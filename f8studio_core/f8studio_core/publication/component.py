@@ -9,6 +9,7 @@ from f8studio_core.graph.exchange import (
 from f8studio_core.graph.models import GraphEdge, GraphEdgeKind, GraphNode, NodeLayout, OperatorNode, ServiceNode, StudioDocument
 from f8studio_core.graph.state_policy import ExcludedState, upgrade_document
 from f8studio_core.graph.validation import validate_document
+from f8studio_core.graph.runtime_hosts import normalize_studio_hosts
 
 from .models import ComponentEndpoint, HostBinding, PortableComponent
 
@@ -56,7 +57,7 @@ No installed extension or runtime is required.
         metadata=ExchangeMetadata(graph_id="component", project_id="component"), definitions=component.definitions,
         services=services, operators=component.operators, connections=component.connections,
         presentation=msgspec.structs.replace(component.presentation, node_order=(*sorted(bindings), *component.presentation.node_order)))
-    document = import_graph(msgspec.json.encode(exchange))
+    document = import_graph(msgspec.json.encode(exchange), component_preview=True)
     endpoints: set[str] = set()
     nodes = {node.node_id: node for node in document.nodes}
     for endpoint in component.endpoints:
@@ -66,7 +67,7 @@ No installed extension or runtime is required.
         if not any(port.port_id == endpoint.port_id and port.direction is endpoint.direction for port in nodes[endpoint.node_id].ports):
             raise ValueError(f"component endpoint port not found: {endpoint.node_id}/{endpoint.port_id}")
     # Current contracts cannot carry private instance values, even in a forged import.
-    cleaned = import_graph(export_shared_graph(document))
+    cleaned = import_graph(export_shared_graph(document), component_preview=True)
     if cleaned.nodes != document.nodes:
         raise ValueError("component contains nonpublishable or upstream-bound instance values")
     return document
@@ -128,7 +129,7 @@ def decode_component(payload: bytes | str) -> PortableComponent:
             document = StudioDocument(schema_version="f8studio-document/2" if legacy.schema_version.endswith("/1") else "f8studio-document/3",
                 project_id="component", graph_id="component", graph_revision=0, layout_revision=0,
                 nodes=legacy.nodes, edges=legacy.edges, layout=legacy.layout)
-            return capture_component(upgrade_document(document))
+            return capture_component(normalize_studio_hosts(upgrade_document(document)))
         component = msgspec.json.decode(payload, type=PortableComponent)
     except msgspec.DecodeError as exc:
         raise ValueError(f"invalid portable component: {exc}") from exc

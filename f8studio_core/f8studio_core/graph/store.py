@@ -36,7 +36,8 @@ from .models import (
     SetNodeStateOp,
     StudioDocument,
 )
-from .validation import validate_document, validate_state_update
+from .validation import validate_state_update
+from .runtime_hosts import validate_runtime_document
 from .spec_edit import validate_spec_edit, validate_spec_snapshot
 
 
@@ -357,7 +358,7 @@ class GraphStore:
         if undo_limit < 1:
             raise ValueError("undo_limit must be positive")
         self._undo_limit = undo_limit
-        validate_document(document)
+        validate_runtime_document(document)
         self._document = clone_document(document)
         self._request_history_limit = request_history_limit
         self._spec_resolver = spec_resolver
@@ -405,7 +406,7 @@ class GraphStore:
             candidate = before
             for operation in request.operations:
                 candidate = _apply_operation(candidate, operation, self._spec_resolver)
-            validate_document(candidate)
+            validate_runtime_document(candidate)
 
             graph_requested = any(_operation_changes_graph(operation) for operation in request.operations)
             layout_requested = any(_operation_changes_layout(operation) for operation in request.operations)
@@ -513,7 +514,7 @@ class GraphStore:
             edges=target.edges,
             layout=target.layout,
         )
-        validate_document(restored)
+        validate_runtime_document(restored)
         return PatchResult(
             request_id=request_id,
             document=clone_document(restored),

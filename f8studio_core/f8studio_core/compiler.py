@@ -43,11 +43,10 @@ from .graph.models import (
     StudioDocument,
 )
 from .graph.codec import canonical_json_bytes
-from .graph.validation import validate_document
+from .graph.runtime_hosts import STUDIO_SERVICE_ID, validate_runtime_document
 
 
 PATCH_HUB_OPERATOR_CLASS = "f8.patch_hub"
-STUDIO_SERVICE_ID = "studio"
 PYENGINE_SERVICE_CLASS = "f8.pyengine"
 CPPENGINE_SERVICE_CLASS = "f8.cppengine"
 
@@ -113,7 +112,7 @@ def _runtime_edges(graph: F8RuntimeGraph) -> list[F8Edge]:
 
 
 def semantic_graph_revision(document: StudioDocument) -> str:
-    validate_document(document)
+    validate_runtime_document(document)
     enabled_nodes = {node.node_id: node for node in document.nodes if node.enabled}
     payload = {
         "graphId": document.graph_id,
@@ -456,7 +455,7 @@ def split_runtime_graph_by_service(graph: F8RuntimeGraph) -> dict[str, F8Runtime
 
 
 def compile_document(document: StudioDocument) -> CompiledRuntimeGraphs:
-    validate_document(document)
+    validate_runtime_document(document)
     enabled_nodes = {node.node_id: node for node in document.nodes if node.enabled}
     enabled_services = {
         node.service_id: node for node in enabled_nodes.values() if isinstance(node, ServiceNode)

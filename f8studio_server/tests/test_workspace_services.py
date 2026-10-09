@@ -7,8 +7,11 @@ from unittest.mock import AsyncMock, patch
 import msgspec
 import pytest
 
-from f8pysdk.specs import F8JsonValue, F8RuntimeGraph, F8ServiceSpec
-from f8studio_core.graph import CreateNodeOp, NodeCatalog, PatchRequest, SetNodeStateOp
+from f8pysdk.specs import F8JsonValue, F8RuntimeGraph, F8ServiceSpec, F8StateAccess, F8StateSpec, integer_schema
+from f8pysdk.host import ServiceHost, ServiceHostConfig
+from f8pysdk.state import StateWriteError
+from f8pysdk.testing import ServiceBusHarness
+from f8studio_core.graph import CreateNodeOp, NodeCatalog, OperatorNode, PatchRequest, SetNodeStateOp, SetOperatorSpecOp
 from f8studio_server.application import StudioApplication
 from f8studio_server.assets import (
     ASSET_SCHEMA_VERSION,
@@ -29,7 +32,7 @@ from f8studio_server.local_integration import LocalIntegrationService, RegisterH
 from f8studio_server.models import (
     CreateCatalogNodeRequest,
     CreateProjectRequest,
-    DeployJob,
+    DeployProjectRequest,
     JobStatus,
     RuntimeActionResult,
     RuntimeStateField,
@@ -40,6 +43,9 @@ from f8studio_server.project_repository import ProjectRepository
 from f8studio_server.editor_context import editor_support_files
 from f8studio_server.projects import ProjectService
 from f8studio_server.runtime import RuntimeMonitorCallback
+from f8studio_server.studio_runtime import SERVICE_CLASS, create_studio_registry
+from f8studio_server.studio_runtime.presentation import EventPresentationOutlet
+from f8studio_server.events import EventJournal
 
 
 def test_python_script_editor_uses_injected_api_and_dynamic_bindings(tmp_path: Path) -> None:
@@ -91,20 +97,25 @@ def test_python_script_editor_uses_injected_api_and_dynamic_bindings(tmp_path: P
 class HotkeyRuntimeGateway:
     def __init__(self) -> None:
         self.state_calls: list[tuple[str, str, str, F8JsonValue]] = []
+        self.graphs: dict[str, F8RuntimeGraph] = {}
 
     async def start_monitoring(self, callback: RuntimeMonitorCallback) -> None:
         del callback
 
     async def deploy(self, *, service_id: str, graph: F8RuntimeGraph, force_apply: bool) -> ServiceDeployResult:
-        del graph, force_apply
+        del force_apply
+        self.graphs[service_id] = graph
         return ServiceDeployResult(service_id=service_id, success=True)
 
     async def status(self, service_id: str) -> ServiceRuntimeStatus:
+        graph = self.graphs.get(service_id)
         return ServiceRuntimeStatus(
             service_id=service_id,
             service_class="f8.pystudio",
             runtime_instance_id="runtime1",
             active=True,
+            rungraph_graph_id="" if graph is None else str(graph.graphId),
+            rungraph_revision="" if graph is None else str(graph.revision),
         )
 
     async def set_active(self, service_id: str, *, active: bool) -> RuntimeActionResult:
@@ -349,6 +360,173 @@ def test_hotkey_activation_preserves_graph_revision_and_syncs_runtime(tmp_path: 
     studio.editor.close()
 
 
+async def deploy_project(studio: StudioApplication, project_id: str, revision: int, request_id: str = "deploy") -> None:
+    job = await studio.tools.deploy(project_id, DeployProjectRequest(request_id=request_id, expected_graph_revision=revision))
+    for _ in range(200):
+        latest = await studio.jobs.get(job.job_id)
+        if latest.status not in {JobStatus.queued, JobStatus.running}:
+            assert latest.status is JobStatus.succeeded, latest
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("deployment did not finish")
+
+
+class InMemoryStudioGateway(HotkeyRuntimeGateway):
+    """Exercise SDK schema validation instead of accepting every state write."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.bus = ServiceBusHarness().create_bus("studio")
+        self.outlet = EventPresentationOutlet(EventJournal(server_epoch="state-sync-test"))
+        self.host = ServiceHost(self.bus, config=ServiceHostConfig(service_class=SERVICE_CLASS),
+            registry=create_studio_registry(presentation=self.outlet))
+
+    async def deploy(self, *, service_id: str, graph: F8RuntimeGraph, force_apply: bool) -> ServiceDeployResult:
+        await self.bus.set_rungraph(graph)
+        return await super().deploy(service_id=service_id, graph=graph, force_apply=force_apply)
+
+    async def set_state(self, service_id: str, *, node_id: str, field: str, value: F8JsonValue) -> RuntimeActionResult:
+        self.state_calls.append((service_id, node_id, field, value))
+        try:
+            await self.bus.publish_state_external(node_id, field, value)
+        except StateWriteError as exc:
+            return RuntimeActionResult(success=False, error_message=str(exc))
+        return RuntimeActionResult(success=True)
+
+    async def close(self) -> None:
+        await self.host.stop()
+        await self.outlet.close()
+
+
+def test_new_copied_visualization_saves_state_until_its_node_is_deployed(tmp_path: Path) -> None:
+    runtime = InMemoryStudioGateway()
+    studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
+    studio.projects.create(CreateProjectRequest(project_id="copied", name="Copied"))
+    host = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class=SERVICE_CLASS))
+    viz = studio.catalog.create_node(CreateCatalogNodeRequest(kind="operator", node_id="viz", service_id="studio",
+        service_class=SERVICE_CLASS, operator_class="f8.viz.text"))
+    created = studio.projects.patch("copied", PatchRequest(request_id="create", expected_graph_revision=0,
+        expected_layout_revision=0, operations=(CreateNodeOp(node=host), CreateNodeOp(node=viz)))).result.document
+
+    async def scenario() -> None:
+        try:
+            await deploy_project(studio, "copied", created.graph_revision)
+            copied = msgspec.structs.replace(viz, node_id="viz_copy")
+            added = await studio.tools.apply_patch("copied", PatchRequest(request_id="copy",
+                expected_graph_revision=created.graph_revision, expected_layout_revision=0,
+                operations=(CreateNodeOp(node=copied),)))
+            # The service is alive, but its running graph doesn't contain the new node.
+            assert runtime.bus.get_node("viz_copy") is None
+            rejected = await runtime.set_state("studio", node_id="viz_copy", field="uiUpdate", value=False)
+            assert not rejected.success and "unknown state field" in rejected.error_message
+            runtime.state_calls.clear()
+            saved = await studio.tools.apply_patch("copied", PatchRequest(request_id="pause_copy",
+                expected_graph_revision=added.document.graph_revision, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="viz_copy", field="uiUpdate", value=False),)))
+            assert not saved.runtime_errors
+            assert not runtime.state_calls
+            assert next(node for node in saved.document.nodes if node.node_id == "viz_copy").state_values["uiUpdate"] is False
+            # An existing node can still synchronize despite unrelated draft edits.
+            synced = await studio.tools.apply_patch("copied", PatchRequest(request_id="pause_original",
+                expected_graph_revision=saved.document.graph_revision, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="viz", field="uiUpdate", value=False),)))
+            assert not synced.runtime_errors
+            assert runtime.state_calls == [("studio", "viz", "uiUpdate", False)]
+            await deploy_project(studio, "copied", synced.document.graph_revision, request_id="deploy_copy")
+            assert runtime.bus.get_node("viz_copy") is not None
+            assert (await runtime.bus.state_store.read_state("viz_copy", "uiUpdate")).value is False
+            resumed = await studio.tools.apply_patch("copied", PatchRequest(request_id="resume_copy",
+                expected_graph_revision=synced.document.graph_revision, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="viz_copy", field="uiUpdate", value=True),)))
+            assert not resumed.runtime_errors
+            assert runtime.state_calls[-1] == ("studio", "viz_copy", "uiUpdate", True)
+            assert (await runtime.bus.state_store.read_state("viz_copy", "uiUpdate")).value is True
+        finally:
+            await studio.close()
+    asyncio.run(scenario())
+
+
+def test_old_receipt_cannot_sync_after_restart_or_to_another_project_runtime(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        runtime = InMemoryStudioGateway()
+        studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
+        try:
+            for project_id in ("first", "second"):
+                studio.projects.create(CreateProjectRequest(project_id=project_id, name=project_id))
+                host = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class=SERVICE_CLASS))
+                viz = studio.catalog.create_node(CreateCatalogNodeRequest(kind="operator", node_id=project_id, service_id="studio",
+                    service_class=SERVICE_CLASS, operator_class="f8.viz.wave"))
+                studio.projects.patch(project_id, PatchRequest(request_id="create", expected_graph_revision=0,
+                    expected_layout_revision=0, operations=(CreateNodeOp(node=host), CreateNodeOp(node=viz))))
+                await deploy_project(studio, project_id, 1)
+            first = await studio.tools.apply_patch("first", PatchRequest(request_id="edit_old_project",
+                expected_graph_revision=1, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="first", field="uiUpdate", value=False),)))
+            assert not first.runtime_errors and not runtime.state_calls
+            # A reset process no longer has the successfully deployed rungraph.
+            await runtime.deploy(service_id="studio", graph=F8RuntimeGraph(graphId="empty", revision="reset", nodes=[], edges=[]),
+                force_apply=True)
+            assert runtime.bus.get_node("second") is None
+            second = await studio.tools.apply_patch("second", PatchRequest(request_id="edit_reset_runtime",
+                expected_graph_revision=1, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="second", field="uiUpdate", value=False),)))
+            assert not second.runtime_errors and not runtime.state_calls
+        finally:
+            await studio.close()
+        fresh_runtime = InMemoryStudioGateway()
+        restarted = StudioApplication(data_dir=tmp_path, runtime=fresh_runtime, service_roots=())
+        try:
+            assert (await restarted.jobs.latest("second")).status is JobStatus.succeeded
+            offline = await restarted.tools.apply_patch("second", PatchRequest(request_id="edit_after_restart",
+                expected_graph_revision=second.document.graph_revision, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="second", field="uiUpdate", value=True),)))
+            assert not offline.runtime_errors and not fresh_runtime.state_calls
+            await deploy_project(restarted, "second", offline.document.graph_revision, request_id="redeploy")
+            synced = await restarted.tools.apply_patch("second", PatchRequest(request_id="live_after_restart",
+                expected_graph_revision=offline.document.graph_revision, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="second", field="uiUpdate", value=False),)))
+            assert not synced.runtime_errors
+            assert fresh_runtime.state_calls == [("studio", "second", "uiUpdate", False)]
+        finally:
+            await restarted.close()
+    asyncio.run(scenario())
+
+
+def test_added_state_field_waits_for_deployment_even_on_an_existing_operator(tmp_path: Path) -> None:
+    runtime = InMemoryStudioGateway()
+    studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
+    studio.projects.create(CreateProjectRequest(project_id="fields", name="Fields"))
+    host = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class=SERVICE_CLASS))
+    panel = studio.catalog.create_node(CreateCatalogNodeRequest(kind="operator", node_id="panel", service_id="studio",
+        service_class=SERVICE_CLASS, operator_class="f8.control_panel"))
+    assert isinstance(panel, OperatorNode)
+    studio.projects.patch("fields", PatchRequest(request_id="create", expected_graph_revision=0, expected_layout_revision=0,
+        operations=(CreateNodeOp(node=host), CreateNodeOp(node=panel))))
+
+    async def scenario() -> None:
+        try:
+            await deploy_project(studio, "fields", 1)
+            spec = msgspec.structs.replace(panel.spec, stateFields=[*panel.spec.stateFields,
+                F8StateSpec(name="gain", valueSchema=integer_schema(default=1), access=F8StateAccess.rw)])
+            saved = await studio.tools.apply_patch("fields", PatchRequest(request_id="new_field", expected_graph_revision=1,
+                expected_layout_revision=0, operations=(SetOperatorSpecOp(node_id="panel", spec=spec),
+                    SetNodeStateOp(node_id="panel", field="gain", value=2))))
+            assert runtime.bus.get_node("panel") is not None
+            assert runtime.bus.state_store.access_for(node_id="panel", field="gain") is None
+            assert not saved.runtime_errors and not runtime.state_calls
+            assert next(node for node in saved.document.nodes if node.node_id == "panel").state_values["gain"] == 2
+            await deploy_project(studio, "fields", saved.document.graph_revision, request_id="deploy_field")
+            assert (await runtime.bus.state_store.read_state("panel", "gain")).value == 2
+            updated = await studio.tools.apply_patch("fields", PatchRequest(request_id="edit_field",
+                expected_graph_revision=saved.document.graph_revision, expected_layout_revision=0,
+                operations=(SetNodeStateOp(node_id="panel", field="gain", value=3),)))
+            assert not updated.runtime_errors
+            assert runtime.state_calls == [("studio", "panel", "gain", 3)]
+        finally:
+            await studio.close()
+    asyncio.run(scenario())
+
+
 def test_state_patch_syncs_deployed_runtime_and_reports_rejection(tmp_path: Path) -> None:
     runtime = HotkeyRuntimeGateway()
     studio = StudioApplication(data_dir=tmp_path, runtime=runtime, service_roots=())
@@ -370,12 +548,7 @@ def test_state_patch_syncs_deployed_runtime_and_reports_rejection(tmp_path: Path
         assert first.runtime_errors == ()
         assert runtime.state_calls == []
 
-        studio.jobs.latest = AsyncMock(return_value=DeployJob(
-            job_id="job", request_id="deploy", project_id=project.project_id,
-            source_graph_revision=first.document.graph_revision, source_semantic_revision="revision",
-            status=JobStatus.succeeded, created_at="now", updated_at="now",
-            service_results=(ServiceDeployResult(service_id="studio", success=True),),
-        ))
+        await deploy_project(studio, project.project_id, first.document.graph_revision)
         request = PatchRequest(
             request_id="online", expected_graph_revision=first.document.graph_revision,
             expected_layout_revision=first.document.layout_revision,
@@ -440,12 +613,7 @@ def test_state_sync_cancellation_publishes_committed_document(tmp_path: Path) ->
     )).result.document
 
     async def run() -> None:
-        studio.jobs.latest = AsyncMock(return_value=DeployJob(
-            job_id="deployed", request_id="deploy", project_id=project.project_id,
-            source_graph_revision=document.graph_revision, source_semantic_revision="revision",
-            status=JobStatus.succeeded, created_at="now", updated_at="now",
-            service_results=(ServiceDeployResult(service_id="studio", success=True),),
-        ))
+        await deploy_project(studio, project.project_id, document.graph_revision)
         entered = asyncio.Event()
         hold = asyncio.Event()
 
@@ -465,8 +633,9 @@ def test_state_sync_cancellation_publishes_committed_document(tmp_path: Path) ->
         with pytest.raises(asyncio.CancelledError):
             await task
         stream = await studio.events.open_stream(client_epoch=studio.server_epoch, after_sequence=0)
-        assert len(stream.replay) == 1
-        event = msgspec.json.decode(msgspec.json.encode(stream.replay[0]))
+        committed = [event for event in stream.replay if event.type == "graph.committed"]
+        assert len(committed) == 1
+        event = msgspec.json.decode(msgspec.json.encode(committed[0]))
         assert event['payload']['document']['graphRevision'] == document.graph_revision + 1
         assert event['payload']['runtimeErrors'] == ['Runtime state synchronization cancelled']
         assert studio.projects.document(project.project_id).nodes[0].state_values['tickMs'] == 300

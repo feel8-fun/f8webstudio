@@ -23,9 +23,9 @@ from f8studio_core.graph import (
     PatchResult,
     StudioDocument,
     new_document,
-    validate_document,
 )
 from f8studio_core.graph.codec import canonical_json_bytes
+from f8studio_core.graph.runtime_hosts import validate_runtime_document
 from f8studio_core.graph.spec_edit import validate_spec_snapshot
 from f8studio_core.graph.state_policy import apply_installed_state_policy
 
@@ -119,7 +119,7 @@ class ProjectService:
             return self._store(project_id).snapshot()
 
     def validate(self, document: StudioDocument) -> None:
-        validate_document(document)
+        validate_runtime_document(document)
         self._validate_installed_definitions(document)
 
     def _validate_installed_definitions(self, document: StudioDocument) -> None:

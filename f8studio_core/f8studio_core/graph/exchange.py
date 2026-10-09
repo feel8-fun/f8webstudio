@@ -17,6 +17,7 @@ from .models import (
     StudioDocument,
 )
 from .validation import validate_document
+from .runtime_hosts import normalize_studio_hosts
 from .state_policy import ExcludedState, project_document_for_sharing, upgrade_document
 
 
@@ -123,7 +124,13 @@ def export_graph(document: StudioDocument) -> bytes:
     return canonical_json_bytes(exchange)
 
 
-def import_graph(payload: bytes | str, *, project_id: str | None = None) -> StudioDocument:
+def import_graph(payload: bytes | str, *, project_id: str | None = None, component_preview: bool = False) -> StudioDocument:
+    """Load a graph, repairing historical builtin host identities.
+
+    Component previews retain template IDs and synthetic host aliases. They are
+    structurally valid documents, but GraphStore/compilation still enforce the
+    executable graph's singleton identity before any authoring or deployment.
+    """
     try:
         exchange = _DECODER.decode(payload)
     except msgspec.DecodeError as exc:
@@ -198,6 +205,8 @@ def import_graph(payload: bytes | str, *, project_id: str | None = None) -> Stud
             nodes=tuple(ordered[node_id] for node_id in exchange.presentation.node_order),
         )
     document = upgrade_document(document)
+    if not component_preview:
+        document = normalize_studio_hosts(document)
     validate_document(document)
     return document
 

@@ -18,7 +18,6 @@ from .models import DeployJob, DeployProjectRequest, ProjectRecord, ProjectSumma
 from .monitors import RuntimeMonitorStore
 from .projects import ProjectService
 from .runtime import RuntimeGateway
-from .runtime_sync import service_was_deployed
 from .project_commits import ProjectCommits
 from .assets import AssetKind, AssetRecord, AssetRepository, CaptureComponentRequest, CreateAssetRequest
 from .component_models import ComponentPreview, ComponentPreviewIssue, ComponentSource, InsertComponentRequest, InsertComponentResult
@@ -145,7 +144,6 @@ class StudioAutomationTools:
             if not changes:
                 return await self._commits.publish(project_id, result)
             try:
-                deployment = await self._jobs.latest(project_id)
                 nodes = {node.node_id: node for node in result.document.nodes}
                 errors: list[str] = []
                 for change in changes:
@@ -156,9 +154,11 @@ class StudioAutomationTools:
                     field = next((field for field in fields if field.name == change.field), None)
                     if field is None or field.access == F8StateAccess.ro:
                         continue
-                    if state_is_persistent(field) and not service_was_deployed(deployment, node.service_id):
-                        continue
                     try:
+                        if state_is_persistent(field) and not await self._jobs.state_is_deployed(
+                            project_id, service_id=node.service_id, node_id=node.node_id, field=change.field,
+                        ):
+                            continue
                         response = await self._runtime.set_state(
                             node.service_id, node_id=node.node_id, field=change.field, value=change.value,
                         )

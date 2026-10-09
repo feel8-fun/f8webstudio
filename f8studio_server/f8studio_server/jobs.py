@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import uuid4
 
@@ -14,7 +15,7 @@ import msgspec
 from f8studio_core import compile_document, semantic_graph_revision
 from f8studio_core.graph import IdempotencyConflictError, RevisionConflictError
 from f8studio_core.graph.codec import canonical_json_bytes
-from f8pysdk.specs import F8JsonValue, F8RuntimeGraph
+from f8pysdk.specs import F8JsonValue, F8RuntimeGraph, F8StateAccess
 
 from .events import EventJournal, StudioEventType
 from .job_repository import JobRepository
@@ -25,6 +26,12 @@ from .runtime import RuntimeGateway
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _AppliedServiceGraph:
+    project_id: str
+    graph: F8RuntimeGraph
 
 
 class ServiceProcessController(Protocol):
@@ -55,6 +62,9 @@ class DeployCoordinator:
         self._events = events
         self._processes = processes
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        # Deployment receipts are history, not proof of a current runtime schema.
+        # Studio's builtin process starts empty after each server restart.
+        self._applied_services: dict[str, _AppliedServiceGraph] = {}
         self._lock = asyncio.Lock()
         self._repository.mark_interrupted_jobs_failed(timestamp=utc_now_text())
 
@@ -105,6 +115,22 @@ class DeployCoordinator:
 
     async def latest(self, project_id: str) -> DeployJob | None:
         return await asyncio.to_thread(self._repository.latest_for_project, project_id)
+
+    async def state_is_deployed(self, project_id: str, *, service_id: str, node_id: str, field: str) -> bool:
+        applied = self._applied_services.get(service_id)
+        if applied is None or applied.project_id != project_id:
+            return False
+        nodes = () if isinstance(applied.graph.nodes, msgspec.UnsetType) else applied.graph.nodes
+        node = next((node for node in nodes if node.nodeId == node_id), None)
+        if node is None:
+            return False
+        fields = () if isinstance(node.stateFields, msgspec.UnsetType) else node.stateFields
+        if not any(item.name == field and item.access != F8StateAccess.ro for item in fields):
+            return False
+        status = await self._runtime.status(service_id)
+        return (self._applied_services.get(service_id) is applied
+                and status.rungraph_graph_id == str(applied.graph.graphId)
+                and status.rungraph_revision == str(applied.graph.revision))
 
     async def has_active_project_job(self, project_id: str) -> bool:
         return await asyncio.to_thread(self._repository.has_active_project_job, project_id)
@@ -160,7 +186,7 @@ class DeployCoordinator:
             for service_id, graph_value in sorted(per_service.items()):
                 calls.append(
                     asyncio.create_task(
-                        self._deploy_service(service_id, graph_value, force_apply=force_apply),
+                        self._deploy_service(service_id, graph_value, project_id=job.project_id, force_apply=force_apply),
                         name=f"deploy:{job.job_id}:{service_id}",
                     )
                 )
@@ -202,17 +228,22 @@ class DeployCoordinator:
         service_id: str,
         graph: F8RuntimeGraph,
         *,
+        project_id: str,
         force_apply: bool,
     ) -> ServiceDeployResult:
         service_class = "<unknown>"
         try:
             service_class = self._service_class(service_id, graph)
             await self._ensure_process(service_id, service_class=service_class)
-            return await self._runtime.deploy(
+            self._applied_services.pop(service_id, None)
+            result = await self._runtime.deploy(
                 service_id=service_id,
                 graph=graph,
                 force_apply=force_apply,
             )
+            if result.success:
+                self._applied_services[service_id] = _AppliedServiceGraph(project_id=project_id, graph=graph)
+            return result
         except Exception as exc:
             logger.exception(
                 "service deployment failed service_id=%s service_class=%s",

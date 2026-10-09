@@ -1,6 +1,8 @@
 from f8pysdk.specs import F8DataPayloadSpec, F8DataPortPayloadKind
 import asyncio
 from typing import Any
+import msgspec
+import pytest
 
 from f8pysdk.registry import Registry
 from f8pysdk.host import ServiceHost, ServiceHostConfig
@@ -20,6 +22,8 @@ from f8pysdk.specs import (
 from f8pysdk.testing import ServiceBusHarness, buffer_input
 from f8pysdk.time_utils import now_ms
 from f8studio_server.events import EventJournal
+from f8studio_core import compile_document
+from f8studio_core.graph import NodeCatalog, new_document
 from f8studio_server.studio_runtime import (
     EventPresentationOutlet,
     SERVICE_CLASS,
@@ -51,6 +55,46 @@ class CapturingPresentationOutlet:
         ts_ms: int | None = None,
     ) -> None:
         self.commands.append((node_id, command, payload, ts_ms))
+
+
+@pytest.mark.parametrize("operator_class", [
+    "f8.viz.text", "f8.viz.wave", "f8.viz.video", "f8.viz.audio",
+    "f8.viz.track", "f8.viz.three_d", "f8.viz.tcode",
+])
+def test_compiled_visualization_states_accept_external_updates(operator_class: str) -> None:
+    async def scenario() -> None:
+        registry = create_studio_registry(presentation=CapturingPresentationOutlet())
+        describe = Registry.wrap(registry).describe(SERVICE_CLASS)
+        catalog = NodeCatalog(services=[describe.service], operators=describe.operators)
+        host_node = catalog.create_service_node(node_id="studio", service_class=SERVICE_CLASS)
+        operator = catalog.create_operator_node(node_id="viz", service_id="studio", service_class=SERVICE_CLASS,
+            operator_class=operator_class)
+        document = msgspec.structs.replace(new_document(project_id="state_sync"), nodes=(host_node, operator))
+        graph = compile_document(document).per_service["studio"]
+        harness = ServiceBusHarness()
+        bus = harness.create_bus("studio")
+        host = ServiceHost(bus, config=ServiceHostConfig(service_class=SERVICE_CLASS), registry=registry)
+        try:
+            await bus.set_rungraph(graph)
+            assert bus.get_node("viz") is not None
+            written: set[str] = set()
+            for field in operator.spec.stateFields:
+                assert bus.state_store.access_for(node_id="viz", field=field.name) is field.access
+                if field.access is F8StateAccess.ro or isinstance(field.valueSchema.default, msgspec.UnsetType):
+                    continue
+                value = field.valueSchema.default
+                if field.name == "uiUpdate":
+                    value = False
+                await bus.publish_state_external("viz", field.name, value)
+                state = await bus.state_store.read_state("viz", field.name)
+                assert state.found and state.value == value
+                written.add(field.name)
+            assert written
+            if operator_class in {"f8.viz.text", "f8.viz.wave", "f8.viz.video", "f8.viz.audio"}:
+                assert "uiUpdate" in written
+        finally:
+            await host.stop()
+    asyncio.run(scenario())
 
 
 def test_event_presentation_outlet_retains_latest_commands_until_detach() -> None:

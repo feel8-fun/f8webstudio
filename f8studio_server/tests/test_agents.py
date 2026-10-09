@@ -420,7 +420,7 @@ def test_agent_approval_is_invalidated_when_another_client_changes_revision(tmp_
 
         service = client.post(
             "/api/catalog/nodes",
-            json={"kind": "service", "nodeId": "manual_studio", "serviceClass": "f8.pystudio"},
+            json={"kind": "service", "nodeId": "studio", "serviceClass": "f8.pystudio"},
         ).json()
         changed = client.post(
             "/api/projects/conflict_project/patch",
@@ -1084,7 +1084,7 @@ def test_agent_approval_is_invalidated_by_layout_only_edit(tmp_path: Path) -> No
     with TestClient(create_app(web_dist=tmp_path, application=studio)) as client:
         client.post('/api/projects', json={'projectId': 'layout-conflict', 'name': 'Layout'})
         service = client.post('/api/catalog/nodes', json={
-            'kind': 'service', 'nodeId': 'manual_studio', 'serviceClass': 'f8.pystudio',
+            'kind': 'service', 'nodeId': 'studio', 'serviceClass': 'f8.pystudio',
         }).json()
         assert client.post('/api/projects/layout-conflict/patch', json={
             'requestId': 'seed', 'expectedGraphRevision': 0, 'expectedLayoutRevision': 0,
@@ -1096,7 +1096,7 @@ def test_agent_approval_is_invalidated_by_layout_only_edit(tmp_path: Path) -> No
         approval = waiting['approval']
         assert client.post('/api/projects/layout-conflict/patch', json={
             'requestId': 'move', 'expectedGraphRevision': 1, 'expectedLayoutRevision': 0,
-            'operations': [{'op': 'setNodeLayout', 'layout': {'nodeId': 'manual_studio', 'x': 20, 'y': 30}}],
+            'operations': [{'op': 'setNodeLayout', 'layout': {'nodeId': 'studio', 'x': 20, 'y': 30}}],
         }).status_code == 200
         response = client.post(f"/api/agents/sessions/{session_id}/approvals/{approval['approvalId']}",
                                json={'approved': True, 'argumentsHash': approval['argumentsHash']})
@@ -1126,7 +1126,7 @@ def test_extension_tool_approval_is_independent_of_graph_revisions(tmp_path: Pat
         approval = latest.approval
         assert approval is not None and approval.target_graph_revision is None
         node = studio.catalog.create_node(CreateCatalogNodeRequest(
-            kind='service', node_id='new_studio', service_class='f8.pystudio',
+            kind='service', node_id='studio', service_class='f8.pystudio',
         ))
         studio.projects.patch('tool-approval', PatchRequest(request_id='edit-while-approving',
             expected_graph_revision=0, expected_layout_revision=0, operations=(CreateNodeOp(node=node),)))

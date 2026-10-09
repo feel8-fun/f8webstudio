@@ -304,6 +304,57 @@ test('moving a service translates its operators in the persisted coordinate spac
   expect(document.layout[0]?.x).toBe(125);
 });
 
+function documentWithStudio(): StudioDocument {
+  const engine = document.nodes[0];
+  const source = document.nodes[1];
+  if (engine?.kind !== 'service' || source?.kind !== 'operator') throw new Error('Invalid projection fixture');
+  return {
+    ...document,
+    nodes: [...document.nodes, {
+      ...engine, nodeId: 'studio', serviceId: 'studio', serviceClass: 'f8.pystudio', name: 'Web Studio Runtime',
+      spec: { ...engine.spec, serviceClass: 'f8.pystudio' },
+    }, {
+      ...source, nodeId: 'viz', serviceId: 'studio', serviceClass: 'f8.pystudio', name: 'Text Viz',
+      spec: { ...source.spec, serviceClass: 'f8.pystudio' },
+    }],
+    edges: [...document.edges, {
+      ...document.edges[0]!, edgeId: 'to_viz', fromNodeId: 'source', toNodeId: 'viz',
+    }, {
+      ...document.edges[0]!, edgeId: 'from_studio', fromNodeId: 'studio', toNodeId: 'viz',
+    }],
+    layout: [...document.layout,
+      { nodeId: 'studio', x: 700, y: 100, width: null, height: null, collapsed: false },
+      { nodeId: 'viz', x: 900, y: 500, width: null, height: null, collapsed: false },
+    ],
+  };
+}
+
+test('duplicating engine, tick, runtime and viz reuses the Studio singleton and retains wiring', () => {
+  const original = documentWithStudio();
+  let sequence = 0;
+  const operation = duplicateFragment(original, new Set(['engine', 'studio']), (prefix) => `${prefix}_${sequence += 1}`);
+  expect(operation?.nodes).toHaveLength(3);
+  expect(operation?.nodes.filter((node) => node.kind === 'service')).toHaveLength(1);
+  expect(operation?.nodes.find((node) => node.name === 'Text Viz Copy')).toMatchObject({ nodeId: 'operator_3', serviceId: 'studio' });
+  expect(operation?.edges).toHaveLength(3);
+  expect(operation?.edges).toEqual(expect.arrayContaining([
+    expect.objectContaining({ fromNodeId: 'operator_2', toNodeId: 'operator_3' }),
+    expect.objectContaining({ fromNodeId: 'studio', toNodeId: 'operator_3' }),
+  ]));
+  expect(operation?.layout?.some((item) => item.nodeId === 'studio')).toBe(false);
+  expect(operation?.layout?.find((item) => item.nodeId === 'operator_3')).toMatchObject({ x: 940, y: 540 });
+  expect(original.nodes.filter((node) => node.serviceClass === 'f8.pystudio')).toHaveLength(2);
+});
+
+test('duplicating only a Studio operator retains its host and duplicating an empty runtime does nothing', () => {
+  const original = documentWithStudio();
+  const operation = duplicateFragment(original, new Set(['viz']), (prefix) => `${prefix}_copy`);
+  expect(operation?.nodes).toHaveLength(1);
+  expect(operation?.nodes[0]).toMatchObject({ serviceId: 'studio' });
+  expect(duplicateFragment({ ...original, nodes: original.nodes.filter((node) => node.nodeId !== 'viz'), edges: [] },
+    new Set(['studio']), () => { throw new Error('Singleton must not allocate an ID'); })).toBeNull();
+});
+
 test('rejecting a drop outside a compatible service leaves the document unchanged', () => {
   const nodes = projectDocument(document).nodes;
   const operator = nodes.find((node) => node.id === 'source');

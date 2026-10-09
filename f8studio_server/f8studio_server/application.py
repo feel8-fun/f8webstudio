@@ -33,7 +33,6 @@ from .catalog import CatalogService
 from .assets import AssetRepository
 from .database import StudioDatabase
 from .editor import EditorSessionService
-from .runtime_sync import service_was_deployed
 from .events import EventJournal
 from f8pysdk.platform_client import PlatformClient
 from .job_repository import JobRepository
@@ -217,17 +216,6 @@ class StudioApplication:
             raise RevisionConflictError("global hotkey could not commit after a concurrent graph change")
         if result.runtime_errors:
             logger.warning("global hotkey runtime state sync failed: %s", "; ".join(result.runtime_errors))
-        deployment = await self.jobs.latest(binding.project_id)
-        _, _, field = self._hotkey_target(binding)
-        if state_is_persistent(field) and not service_was_deployed(deployment, node.service_id):
-            try:
-                response = await self.runtime.set_state(
-                    node.service_id, node_id=node.node_id, field=binding.field, value=next_value,
-                )
-                if not response.success:
-                    logger.warning("global hotkey runtime state rejected: %s", response.error_message)
-            except (TimeoutError, OSError, RuntimeError, ValueError):
-                logger.exception("global hotkey runtime state sync unavailable project_id=%s node_id=%s field=%s", binding.project_id, node.node_id, binding.field)
 
     def _hotkey_target(self, binding: HotkeyBinding) -> tuple[StudioDocument, GraphNode, F8StateSpec]:
         document = self.projects.document(binding.project_id)

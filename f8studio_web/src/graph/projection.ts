@@ -309,9 +309,16 @@ export function duplicateFragment(
   for (const node of document.nodes) {
     if (node.kind === 'operator' && selectedServiceIds.has(node.serviceId)) expandedNodeIds.add(node.nodeId);
   }
-  const selectedNodes = document.nodes.filter((node) => expandedNodeIds.has(node.nodeId));
+  const selectedNodes = document.nodes.filter((node) => expandedNodeIds.has(node.nodeId)
+    && !(node.kind === 'service' && node.serviceClass === STUDIO_SERVICE_CLASS));
   if (selectedNodes.length === 0) return null;
   const nodeIds = new Map(selectedNodes.map((node) => [node.nodeId, makeId(node.kind)]));
+  // The builtin host already exists; only its selected operators are cloned.
+  for (const node of document.nodes) {
+    if (node.kind === 'service' && node.serviceClass === STUDIO_SERVICE_CLASS && selectedNodeIds.has(node.nodeId)) {
+      nodeIds.set(node.nodeId, node.nodeId);
+    }
+  }
   const projected = projectDocument(document);
   const absolutePositions = new Map(projected.nodes.map((node) => [
     node.id,
@@ -333,6 +340,7 @@ export function duplicateFragment(
     const fromNodeId = nodeIds.get(edge.fromNodeId);
     const toNodeId = nodeIds.get(edge.toNodeId);
     if (fromNodeId === undefined || toNodeId === undefined) return [];
+    if (fromNodeId === edge.fromNodeId && toNodeId === edge.toNodeId) return [];
     return [{ ...edge, edgeId: makeId('edge'), fromNodeId, toNodeId }];
   });
   const layout = selectedNodes.map((node) => {

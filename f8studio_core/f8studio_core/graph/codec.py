@@ -6,7 +6,7 @@ import msgspec
 
 from .models import StudioDocument
 from .state_policy import upgrade_document
-from .validation import validate_document
+from .runtime_hosts import normalize_studio_hosts, validate_runtime_document
 
 
 _DOCUMENT_DECODER = msgspec.json.Decoder(StudioDocument)
@@ -22,8 +22,8 @@ def decode_document(payload: bytes | str) -> StudioDocument:
         document = _DOCUMENT_DECODER.decode(payload)
     except msgspec.DecodeError as exc:
         raise ValueError(f"invalid Studio document: {exc}") from exc
-    document = upgrade_document(document)
-    validate_document(document)
+    document = normalize_studio_hosts(upgrade_document(document))
+    validate_runtime_document(document)
     return document
 
 

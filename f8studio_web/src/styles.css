@@ -1150,7 +1150,32 @@ button:disabled { cursor: default; }
 .quick-node-entry { display: flex; align-items: center; }
 .quick-node-entry > button[role=option] { flex: 1; min-width: 0; }
 .quick-node-entry > button.quick-variant-options { width: auto; padding: 9px 8px; color: #94a2b3; font-size: 10px; }
-.quick-variant-insertion { display: grid; gap: 12px; padding-top: 14px; max-height: 60vh; overflow: auto; }
+.node-quick-search { max-height: 80vh; overflow: auto; }
+.node-quick-search.library-with-details { width: min(1000px, calc(100vw - 32px)); }
+.library-filters { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.library-search-body { display: grid; gap: 16px; }
+.library-with-details .library-search-body { grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr); }
+.library-search-list { min-width: 0; }
+.library-detail { min-width: 0; border-left: 1px solid #343c47; padding-left: 16px; max-height: 58vh; overflow: auto; }
+.template-insertion { display: grid; gap: 12px; }
+.template-insertion > p { margin: 0; }
+.library-description { overflow-wrap: anywhere; }
+.library-description p { margin-top: 0; }
+.library-description h1, .library-description h2 { font-size: 18px; margin: 0 0 10px; }
+.library-description h3 { font-size: 15px; }
+.template-insertion select { width: 100%; padding: 7px; color: #d5dce3; background: #12161c; border: 1px solid #343c47; border-radius: 3px; }
+.template-actions { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 10px 0; background: #191e25; border-top: 1px solid #343c47; }
+.library-tags { color: #94a2b3; font-size: 12px; }
+.quick-entry-actions { flex-shrink: 0; display: grid; }
+.quick-entry-actions > button, .quick-node-entry > button.quick-entry-info { width: auto; padding: 5px 8px; color: #94a2b3; font-size: 10px; }
+.quick-node-entry strong { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .graph-popup-backdrop { padding-top: 5vh; }
+  .node-quick-search { max-height: 90vh; }
+  .library-with-details .library-search-body { grid-template-columns: minmax(0, 1fr); }
+  .library-with-details .quick-node-results { max-height: 20vh; }
+  .library-detail { border-left: 0; border-top: 1px solid #343c47; padding: 12px 0 0; max-height: none; }
+}
 .port-context-popup { position: fixed; z-index: 130; min-width: 240px; max-width: min(450px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 10px; border: 1px solid #52606d; border-radius: 6px; background: #191e25; box-shadow: 0 8px 28px #0009; font-size: 12px; }
 .port-context-popup [role=menu] { display: grid; margin-top: 8px; }
 .port-context-popup button { padding: 8px; text-align: left; border: 0; background: transparent; color: #c6d0dc; cursor: pointer; }

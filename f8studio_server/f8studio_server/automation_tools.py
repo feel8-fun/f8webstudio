@@ -63,7 +63,8 @@ class StudioAutomationTools:
             component = capture_component(document, node_ids=request.node_ids, excluded_states=request.excluded_states)
         except ValueError as exc:
             raise InvalidRequestError(f"cannot capture component: {exc}") from exc
-        return self._assets.create(CreateAssetRequest(kind=AssetKind.component, name=request.name, content=_json_value(component)))
+        return self._assets.create(CreateAssetRequest(kind=AssetKind.component, name=request.name,
+            description=request.description, tags=request.tags, content=_json_value(component)))
 
     def capture_variant(self, project_id: str, request: CaptureVariantRequest) -> AssetRecord:
         document = self._projects.document(project_id)
@@ -126,7 +127,7 @@ class StudioAutomationTools:
             raise RevisionConflictError("project changed before component insertion; refresh and retry")
         asset = self._assets.get(request.asset_id)
         builtin_host: ServiceNode | None = None
-        if asset.kind is AssetKind.variant and any(binding.service_class == STUDIO_SERVICE_CLASS for binding in preview.component.host_bindings):
+        if any(binding.service_class == STUDIO_SERVICE_CLASS for binding in preview.component.host_bindings):
             if not any(isinstance(node, ServiceNode) and node.service_id == STUDIO_SERVICE_ID for node in document.nodes):
                 host = self._catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id=STUDIO_SERVICE_ID, service_class=STUDIO_SERVICE_CLASS))
                 if not isinstance(host, ServiceNode):
@@ -135,14 +136,15 @@ class StudioAutomationTools:
                 document = msgspec.structs.replace(document, nodes=(*document.nodes, host))
         try:
             insertion = prepare_component_insertion(preview.component, document, request_id=request.request_id,
-                host_bindings=request.host_bindings, x=request.x, y=request.y)
+                host_bindings=request.host_bindings, x=request.x, y=request.y, host_offsets=request.host_offsets)
         except ValueError as exc:
             raise InvalidRequestError(f"cannot insert component: {exc}") from exc
         if asset.kind is AssetKind.variant:
             variant_nodes = tuple(msgspec.structs.replace(node, name=asset.name) for node in insertion.fragment.nodes)
-            if builtin_host is not None:
-                variant_nodes = (builtin_host, *variant_nodes)
             insertion = msgspec.structs.replace(insertion, fragment=msgspec.structs.replace(insertion.fragment, nodes=variant_nodes))
+        if builtin_host is not None:
+            insertion = msgspec.structs.replace(insertion, fragment=msgspec.structs.replace(
+                insertion.fragment, nodes=(builtin_host, *insertion.fragment.nodes)))
         source = ComponentSource(asset_id=request.asset_id, version=request.version, node_map=insertion.node_map,
             edge_map=insertion.edge_map, host_bindings=insertion.host_bindings, endpoints=insertion.endpoints)
         patch = PatchRequest(request_id=request.request_id, expected_graph_revision=request.expected_graph_revision,

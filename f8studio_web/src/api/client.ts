@@ -301,10 +301,10 @@ export async function exportSharedProjectGraph(projectId: string, document: Proj
   return `${JSON.stringify(body, null, 2)}\n`;
 }
 
-export async function captureProjectComponent(projectId: string, document: ProjectRecord['document'], name: string, excludedStates: readonly ExcludedState[], nodeIds?: readonly string[]): Promise<AssetRecord> {
+export async function captureProjectComponent(projectId: string, document: ProjectRecord['document'], name: string, excludedStates: readonly ExcludedState[], nodeIds?: readonly string[], metadata?: { readonly description: string; readonly tags: readonly string[] }): Promise<AssetRecord> {
   const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/components`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ expectedGraphRevision: document.graphRevision, expectedLayoutRevision: document.layoutRevision, name, excludedStates, nodeIds }),
+    body: JSON.stringify({ expectedGraphRevision: document.graphRevision, expectedLayoutRevision: document.layoutRevision, name, excludedStates, nodeIds, ...metadata }),
   });
   if (!isObject(body) || typeof body.assetId !== 'string') throw new Error('Component does not match the asset contract');
   return body as unknown as AssetRecord;
@@ -697,8 +697,8 @@ export async function deleteAsset(assetId: string): Promise<void> {
   await requestJson(`/api/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' });
 }
 
-export async function fetchAssetVersions(assetId: string): Promise<readonly AssetVersion[]> {
-  const body = await requestJson(`/api/assets/${encodeURIComponent(assetId)}/versions`);
+export async function fetchAssetVersions(assetId: string, signal?: AbortSignal): Promise<readonly AssetVersion[]> {
+  const body = await requestJson(`/api/assets/${encodeURIComponent(assetId)}/versions`, { signal });
   if (!Array.isArray(body)) throw new Error('Asset versions do not match f8studio-api/1');
   return body as readonly AssetVersion[];
 }

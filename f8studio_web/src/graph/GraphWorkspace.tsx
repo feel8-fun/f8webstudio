@@ -23,7 +23,9 @@ import { NodeQuickSearch } from './NodeQuickSearch';
 import { PortContextMenu, type PortMenuTarget } from './PortContextMenu';
 import { NodeContextMenu, type NodeMenuTarget } from './NodeContextMenu';
 import { CaptureVariantDialog, variantMatchesNode } from './CaptureVariantDialog';
-import { VariantInsertion } from './VariantInsertion';
+import { TemplateInsertion } from '../library/TemplateInsertion';
+import { useLocalTemplates } from '../library/useLocalTemplates';
+import { localTemplate, templateKey, type LibraryTemplate } from '../library/types';
 import { useVariants } from './useVariants';
 import { canPastePortType, pastePortTypeOperation, type CopiedPortType } from './portType';
 
@@ -49,8 +51,8 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   const closeNodeMenu = useCallback(() => setNodeMenu(null), []);
   const [variantCapture, setVariantCapture] = useState<{ nodeId: string; updating: boolean } | null>(null);
   const closeVariantCapture = useCallback(() => setVariantCapture(null), []);
-  const [variantInsertion, setVariantInsertion] = useState<{ assetId?: string; configure?: boolean; serviceId?: string; position?: { x: number; y: number } } | null>(null);
-  const closeNodeSearch = useCallback(() => { setQuickSearch(false); setVariantInsertion(null); }, []);
+  const [templateLaunch, setTemplateLaunch] = useState<{ template?: LibraryTemplate; configure?: boolean; serviceId?: string; position?: { x: number; y: number } } | null>(null);
+  const closeNodeSearch = useCallback(() => { setQuickSearch(false); setTemplateLaunch(null); }, []);
   const { screenToFlowPosition } = useReactFlow();
   const [portMenu, setPortMenu] = useState<PortMenuTarget | null>(null);
   const [copiedType, setCopiedType] = useState<CopiedPortType | null>(null);
@@ -69,6 +71,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
     deployment, setDeployment, setCatalog, refreshingCatalog, reloadProject, commit,
     selectProject, addProject, removeProject, renameProject, history, downloadGraph, uploadGraph, refreshNodeCatalog } = projectState;
   const library = useVariants(project?.projectId ?? null, project?.document.graphRevision);
+  const templates = useLocalTemplates();
   const captureNode = project?.document.nodes.find((node) => node.nodeId === variantCapture?.nodeId);
   const canvas = useGraphCanvas({ project, busy, setBusy, setError, commit, reloadProject, selectedNodeId, selectedEdgeId, setSelectedNodeId, setSelectedEdgeId });
   const { nodes, edges, onNodesChange, onEdgesChange, graphCanvasRef, selectedNode, selectedEdge, addSpec, connect, connectionEnded, isValidConnection,
@@ -124,7 +127,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [quickSearch, portMenu, nodeMenu, activeCommand, locked, project]);
-  useEffect(() => { setQuickSearch(false); setPortMenu(null); setNodeMenu(null); setVariantCapture(null); setVariantInsertion(null); }, [selectedProjectId]);
+  useEffect(() => { setQuickSearch(false); setPortMenu(null); setNodeMenu(null); setVariantCapture(null); setTemplateLaunch(null); }, [selectedProjectId]);
 
   const resizeInspector = (clientX: number): void => {
     const bounds = graphWorkspaceRef.current?.getBoundingClientRect();
@@ -147,7 +150,9 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           onSelect={selectProject} onAdd={addProject} onRemove={removeProject} onRename={renameProject} />
         <NodeCatalog catalog={catalog} projectServiceClasses={new Set(project?.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))}
           canAdd={!busy && !refreshingCatalog && project !== null} refreshing={busy || refreshingCatalog}
-          variants={library.variants} onAddVariant={(variant, configure) => setVariantInsertion({ assetId: variant.assetId, configure })}
+          variants={library.variants} onAddVariant={(variant, configure) => setTemplateLaunch({ template: localTemplate(variant), configure })}
+          components={templates.templates.filter((template) => template.kind === 'component')}
+          onAddComponent={(template, configure) => setTemplateLaunch({ template, configure })}
           onAdd={(spec) => void addSpec(spec)} onRefresh={() => void refreshNodeCatalog()} />
       </aside>
 
@@ -234,7 +239,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(node) => node.className === 'flow-node-service' ? '#469b79' : '#5d7896'} />
           </ReactFlow></GraphNodeInteractionContext.Provider>}
-        {(error ?? library.error) !== null && <div className="graph-error" role="alert">{error ?? library.error}</div>}
+        {(error ?? library.error ?? templates.error) !== null && <div className="graph-error" role="alert">{error ?? library.error ?? templates.error}</div>}
       </section>
 
       <div className="graph-inspector-resizer" role="separator" aria-label="Resize Inspector" aria-orientation="vertical"
@@ -291,15 +296,16 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           const selected = nodes.filter((node) => node.selected).map((node) => node.id);
           setCapturingIds(nodeMenu.node && !selected.includes(nodeMenu.node.nodeId) ? [nodeMenu.node.nodeId] : selected);
           closeNodeMenu();
-        }} onAddNode={() => { setVariantInsertion({ position: screenToFlowPosition({ x: nodeMenu.x, y: nodeMenu.y }), serviceId: nodeMenu.node?.serviceId }); closeNodeMenu(); }} />}
-      {(quickSearch || variantInsertion !== null) && project && <NodeQuickSearch key={project.projectId} catalog={catalog}
+        }} onAddNode={() => { setTemplateLaunch({ position: screenToFlowPosition({ x: nodeMenu.x, y: nodeMenu.y }), serviceId: nodeMenu.node?.serviceId }); closeNodeMenu(); }} />}
+      {(quickSearch || templateLaunch !== null) && project && <NodeQuickSearch key={project.projectId} catalog={catalog}
         services={new Set(project.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))}
-        variants={library.variants} initialVariant={library.variants.find((variant) => variant.assetId === variantInsertion?.assetId)}
-        configureVariant={variantInsertion?.configure} onAdd={(spec) => void addSpec(spec, variantInsertion?.serviceId)} onClose={closeNodeSearch}
-        renderVariant={(variant, configure, onBack, onBusy) => <VariantInsertion key={variant.assetId} document={project.document}
-          variant={variant} configure={configure} preferredServiceId={variantInsertion?.serviceId ?? selectedNode?.serviceId}
-          position={variantInsertion?.position} onBack={onBack} onBusy={onBusy}
-          onInserted={async (name) => { await reloadProject(project.projectId); reportCommand('success', 'Variant added', name); closeNodeSearch(); }} />} />}
+        templates={templates.templates} localLoading={templates.loading} localError={templates.error}
+        initialTemplate={templateLaunch?.template}
+        configureTemplate={templateLaunch?.configure} onAdd={(spec) => void addSpec(spec, templateLaunch?.serviceId)} onClose={closeNodeSearch}
+        renderTemplate={(template, configure, onBack, onBusy) => <TemplateInsertion key={`${templateKey(template.reference)}:${configure}`} document={project.document}
+          template={template} configure={configure} preferredServiceId={templateLaunch?.serviceId ?? selectedNode?.serviceId}
+          position={templateLaunch?.position} onBack={onBack} onBusy={onBusy}
+          onInserted={async (name) => { await reloadProject(project.projectId); reportCommand('success', 'Template added', name); closeNodeSearch(); }} />} />}
       {portMenu && <PortContextMenu target={portMenu} copied={copiedType} busy={locked} onClose={closePortMenu} onCopy={(value) => { setCopiedType(value); closePortMenu(); }} onPaste={() => {
         if (!copiedType || !project) return;
         const node = project.document.nodes.find((item) => item.nodeId === portMenu.node.nodeId);

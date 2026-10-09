@@ -20,8 +20,14 @@ class ComponentInsertion(msgspec.Struct, frozen=True, kw_only=True, rename="came
     endpoints: tuple[ComponentEndpoint, ...]
 
 
+class ComponentOffset(msgspec.Struct, frozen=True, kw_only=True, forbid_unknown_fields=True):
+    x: float
+    y: float
+
+
 def prepare_component_insertion(component: PortableComponent, target: StudioDocument, *, request_id: str,
-                                host_bindings: dict[str, str], x: float = 40, y: float = 40) -> ComponentInsertion:
+                                host_bindings: dict[str, str], x: float = 40, y: float = 40,
+                                host_offsets: dict[str, ComponentOffset] | None = None) -> ComponentInsertion:
     if not request_id.strip() or not math.isfinite(x) or not math.isfinite(y):
         raise ValueError("component insertion requires a request ID and finite position")
     validate_runtime_document(target)
@@ -29,6 +35,11 @@ def prepare_component_insertion(component: PortableComponent, target: StudioDocu
     required = {binding.binding_id: binding.service_class for binding in component.host_bindings}
     if set(host_bindings) != set(required):
         raise ValueError(f"provide exactly these component host bindings: {', '.join(sorted(required)) or '(none)'}")
+    offsets = {} if host_offsets is None else host_offsets
+    if set(offsets) - set(required):
+        raise ValueError("component placement offsets must reference external host bindings")
+    if any(not math.isfinite(offset.x) or not math.isfinite(offset.y) for offset in offsets.values()):
+        raise ValueError("component host placement offsets must be finite")
     services = {node.node_id: node for node in target.nodes if isinstance(node, ServiceNode)}
     for binding_id, service_id in host_bindings.items():
         service = services.get(service_id)
@@ -97,8 +108,9 @@ def prepare_component_insertion(component: PortableComponent, target: StudioDocu
         if node.node_id in reused_hosts:
             continue
         position = by_layout.get(node.node_id, NodeLayout(node_id=node.node_id, x=20 + index * 20, y=80 + index * 20))
+        offset = offsets.get(node.service_id) if not isinstance(node, ServiceNode) else None
         layout.append(msgspec.structs.replace(position, node_id=node_map[node.node_id],
-            x=position.x + x, y=position.y + y))
+            x=position.x + (x if offset is None else offset.x), y=position.y + (y if offset is None else offset.y)))
     endpoints = tuple(msgspec.structs.replace(endpoint, node_id=node_map[endpoint.node_id],
         port_id=mapped_port(endpoint.node_id, endpoint.port_id)) for endpoint in component.endpoints)
     return ComponentInsertion(fragment=InsertFragmentOp(nodes=tuple(nodes), edges=edges, layout=tuple(layout)),

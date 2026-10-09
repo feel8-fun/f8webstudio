@@ -4,6 +4,7 @@ import msgspec
 
 from f8studio_core.graph import PatchResult, StudioDocument
 from f8studio_core.publication import ComponentEndpoint, PortableComponent
+from f8studio_core.publication.insertion import ComponentOffset
 
 
 class InsertComponentRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
@@ -15,6 +16,7 @@ class InsertComponentRequest(msgspec.Struct, frozen=True, kw_only=True, rename="
     host_bindings: dict[str, str] = msgspec.field(default_factory=dict)
     x: float = 40
     y: float = 40
+    host_offsets: dict[str, ComponentOffset] = msgspec.field(default_factory=dict)
 
 
 class ComponentSource(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):

@@ -23,6 +23,7 @@ from f8studio_server.assets import AssetKind, CaptureComponentRequest, CreateAss
 from f8studio_server.component_models import InsertComponentRequest
 from f8studio_server.errors import InvalidRequestError
 from f8studio_server.models import CreateProjectRequest
+from f8studio_core.publication.insertion import ComponentOffset
 
 
 SOURCE_CODE = 'def onMsg(ctx, inputs):\n    ctx.emit("smoothed", inputs.value * ctx.states.alpha)\n'
@@ -155,6 +156,79 @@ def test_internal_edges_remap_and_component_versions_do_not_replace_inserted_nod
     assert inserted_edge.edge_id == result.source.edge_map["data"]
     studio.assets.update(asset_id, UpdateAssetRequest(name="Changed", content=studio.assets.get(asset_id).content))
     assert studio.projects.document("target") == result.patch.document
+
+
+def test_external_host_placement_preserves_group_layout_and_edges_atomically(tmp_path: Path) -> None:
+    studio, _ = studio_with_template(tmp_path)
+    source = studio.projects.document("source")
+    first = source.nodes[1]
+    second = msgspec.structs.replace(first, node_id="second")
+    third = msgspec.structs.replace(first, node_id="third", service_id="other_source")
+    other_source = msgspec.structs.replace(source.nodes[0], node_id="other_source", service_id="other_source")
+    edge = GraphEdge(edge_id="link", from_node_id="script", from_port_id="data:output:smoothed",
+        to_node_id="third", to_port_id="data:input:value", kind=GraphEdgeKind.data)
+    expanded = msgspec.structs.replace(source, nodes=(*source.nodes, other_source, second, third), edges=(edge,), layout=(
+        NodeLayout(node_id="script", x=100, y=200), NodeLayout(node_id="second", x=400, y=220),
+        NodeLayout(node_id="third", x=800, y=200)))
+    component = capture_component(expanded, node_ids=("script", "second", "third"))
+    asset = studio.assets.create(CreateAssetRequest(kind=AssetKind.component, name="Multiple hosts", content=msgspec.to_builtins(component)))
+    target = studio.projects.document("target")
+    other_target = msgspec.structs.replace(target.nodes[0], node_id="other_target", service_id="other_target")
+    studio.projects.patch("target", PatchRequest(request_id="other_host", expected_graph_revision=target.graph_revision,
+        expected_layout_revision=target.layout_revision, operations=(CreateNodeOp(node=other_target),)))
+    before = studio.projects.document("target")
+    insertion = msgspec.structs.replace(request(asset.asset_id), expected_graph_revision=before.graph_revision,
+        expected_layout_revision=before.layout_revision, host_bindings={"source_engine": "existing_engine", "other_source": "other_target"},
+        host_offsets={"source_engine": ComponentOffset(x=500, y=100), "other_source": ComponentOffset(x=-200, y=700)})
+    result = asyncio.run(studio.tools.insert_component("target", insertion))
+    layouts = {item.node_id: item for item in result.patch.document.layout}
+    first_position = layouts[result.source.node_map["script"]]
+    second_position = layouts[result.source.node_map["second"]]
+    third_position = layouts[result.source.node_map["third"]]
+    assert (first_position.x, first_position.y) == (600, 300)
+    assert (second_position.x - first_position.x, second_position.y - first_position.y) == (300, 20)
+    assert (third_position.x, third_position.y) == (600, 900)
+    assert result.patch.document.edges[0].to_node_id == result.source.node_map["third"]
+    assert result.patch.document.graph_revision == before.graph_revision + 1
+    from f8studio_core.graph import HistoryRequest
+    undone = studio.projects.undo("target", HistoryRequest(request_id="undo_group", expected_graph_revision=result.patch.document.graph_revision,
+        expected_layout_revision=result.patch.document.layout_revision))
+    assert undone.result.document.nodes == before.nodes
+    assert undone.result.document.edges == before.edges
+
+
+@pytest.mark.parametrize("offsets", [
+    {"unknown": ComponentOffset(x=1, y=2)}, {"source_engine": ComponentOffset(x=float("inf"), y=2)},
+])
+def test_invalid_placement_never_mutates_project(tmp_path: Path, offsets: dict[str, ComponentOffset]) -> None:
+    studio, asset_id = studio_with_template(tmp_path)
+    before = studio.projects.document("target")
+    with pytest.raises(InvalidRequestError, match="placement offsets"):
+        asyncio.run(studio.tools.insert_component("target", msgspec.structs.replace(request(asset_id), host_offsets=offsets)))
+    assert studio.projects.document("target") == before
+
+
+def test_component_capture_saves_search_metadata_and_reuses_builtin_host(tmp_path: Path) -> None:
+    from f8studio_server.models import CreateCatalogNodeRequest
+    studio = StudioApplication(data_dir=tmp_path / "builtin", service_roots=())
+    host = studio.catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id="studio", service_class="f8.pystudio"))
+    note = studio.catalog.create_node(CreateCatalogNodeRequest(kind="operator", node_id="note", service_id="studio",
+        service_class="f8.pystudio", operator_class="f8.note"))
+    studio.projects.create(CreateProjectRequest(project_id="source", name="Notes"))
+    studio.projects.patch("source", PatchRequest(request_id="create", expected_graph_revision=0, expected_layout_revision=0,
+        operations=(CreateNodeOp(node=host), CreateNodeOp(node=note))))
+    asset = studio.tools.capture_component("source", CaptureComponentRequest(expected_graph_revision=1, expected_layout_revision=0,
+        name="Documentation", node_ids=("note",), description="# Introduction", tags=("docs",)))
+    assert asset.description == "# Introduction"
+    assert asset.tags == ("docs",)
+    studio.projects.create(CreateProjectRequest(project_id="empty", name="Empty"))
+    insertion = InsertComponentRequest(request_id="first", expected_graph_revision=0, expected_layout_revision=0,
+        asset_id=asset.asset_id, version=1, host_bindings={"studio": "studio"})
+    first = asyncio.run(studio.tools.insert_component("empty", insertion))
+    second = asyncio.run(studio.tools.insert_component("empty", msgspec.structs.replace(insertion, request_id="second",
+        expected_graph_revision=first.patch.document.graph_revision, expected_layout_revision=first.patch.document.layout_revision)))
+    assert len(second.patch.document.nodes) == 3
+    assert sum(not isinstance(node, OperatorNode) for node in second.patch.document.nodes) == 1
 
 
 def test_concurrent_insertions_from_same_revision_commit_only_one(tmp_path: Path) -> None:

@@ -509,7 +509,9 @@ def create_app(
     async def capture_project_component(project_id: str, request: Request) -> F8JsonValue:
         from .assets import CaptureComponentRequest
         payload = await _decode_body(request, CaptureComponentRequest)
-        return _json_value(await asyncio.to_thread(studio.tools.capture_component, project_id, payload))
+        record = await asyncio.to_thread(studio.tools.capture_component, project_id, payload)
+        await studio.events.publish(event_type="asset.created", scope=f"asset:{record.asset_id}", payload=_json_value(record))
+        return _json_value(record)
 
     @app.get("/api/variants")
     async def list_variants() -> F8JsonValue:

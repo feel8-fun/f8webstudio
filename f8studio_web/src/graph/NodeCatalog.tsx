@@ -3,6 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 
 import type { CatalogSnapshot, OperatorSpec, ServiceSpec } from '../api/contracts';
 import type { VariantSummary } from '../api/contracts.gen';
+import { matchesTemplate, templateKey, type LibraryTemplate } from '../library/types';
 
 type CatalogSpec = ServiceSpec | OperatorSpec;
 type GroupMode = 'service' | 'category';
@@ -60,7 +61,7 @@ function CatalogFold({ label, count, initiallyOpen, children }: {
   </details>;
 }
 
-export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing, onAdd, onRefresh, variants = [], onAddVariant }: {
+export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing, onAdd, onRefresh, variants = [], onAddVariant, components = [], onAddComponent }: {
   readonly catalog: CatalogSnapshot | null;
   readonly projectServiceClasses: ReadonlySet<string>;
   readonly canAdd: boolean;
@@ -69,6 +70,8 @@ export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing
   readonly onRefresh: () => void;
   readonly variants?: readonly VariantSummary[];
   readonly onAddVariant?: (variant: VariantSummary, configure?: boolean) => void;
+  readonly components?: readonly LibraryTemplate[];
+  readonly onAddComponent?: (component: LibraryTemplate, configure?: boolean) => void;
 }) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<GroupMode>('service');
@@ -129,6 +132,16 @@ export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing
       </CatalogFold>)}
       {groups.length === 0 && <p className="catalog-empty">No matching operators</p>}
       {unlisted.length > 0 && <CatalogFold label="Other Variants" count={unlisted.length} initiallyOpen>{variantButtons(unlisted)}</CatalogFold>}
+      <CatalogFold label="Components" count={components.filter((item) => matchesTemplate(item, query)).length} initiallyOpen key={`components:${normalizedQuery !== ''}`}>
+        {components.filter((item) => matchesTemplate(item, query)).map((component) => <div className="catalog-variant" key={templateKey(component.reference)}>
+          <button type="button" disabled={!canAdd || !onAddComponent} title={component.description} onClick={() => onAddComponent?.(component)}>
+            <strong>{component.name}</strong><span>Component · v{component.reference.version}</span>
+          </button>
+          <button className="catalog-variant-versions" type="button" disabled={!canAdd || !onAddComponent}
+            aria-label={`Details for ${component.name}`} onClick={() => onAddComponent?.(component, true)}>Details / Versions…</button>
+        </div>)}
+        {!components.some((item) => matchesTemplate(item, query)) && <p className="catalog-empty">No matching components</p>}
+      </CatalogFold>
     </div>
   </>;
 }

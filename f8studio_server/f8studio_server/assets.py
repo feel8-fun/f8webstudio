@@ -128,6 +128,8 @@ class ShareGraphRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel
 class CaptureComponentRequest(ShareGraphRequest, frozen=True, kw_only=True):
     name: str = "Component"
     node_ids: tuple[str, ...] | None = None
+    description: str = ""
+    tags: tuple[str, ...] = ()
 
 
 def _now() -> str:

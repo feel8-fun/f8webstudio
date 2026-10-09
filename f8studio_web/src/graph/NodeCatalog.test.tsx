@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import type { CatalogSnapshot } from '../api/contracts';
 import { NodeCatalog } from './NodeCatalog';
 import type { VariantSummary } from '../api/contracts.gen';
+import type { LibraryTemplate } from '../library/types';
 
 afterEach(cleanup);
 
@@ -36,6 +37,19 @@ test('groups operators by service or category and expands search matches', () =>
   expect(onAdd).toHaveBeenCalledWith(catalog.operators[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh node catalog' }));
   expect(onRefresh).toHaveBeenCalledOnce();
+});
+
+test('finds components by keywords and offers direct addition or details', () => {
+  const component: LibraryTemplate = { kind: 'component', reference: { source: 'local', assetId: 'c', version: 2 },
+    name: 'Motion pipeline', description: 'Smooth stream', tags: ['filter'] };
+  const add = vi.fn();
+  render(<NodeCatalog catalog={catalog} projectServiceClasses={new Set()} canAdd refreshing={false}
+    components={[component]} onAddComponent={add} onAdd={vi.fn()} onRefresh={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Search nodes'), { target: { value: 'smooth filter' } });
+  fireEvent.click(screen.getByRole('button', { name: /Motion pipeline.*Component/ }));
+  expect(add).toHaveBeenCalledWith(component);
+  fireEvent.click(screen.getByRole('button', { name: 'Details for Motion pipeline' }));
+  expect(add).toHaveBeenCalledWith(component, true);
 });
 
 test('places service and operator variants under their types and finds variants by name', () => {

@@ -4,12 +4,12 @@ import { CONTAINER_INSET_X, constrainOperatorPosition, OPERATOR_GAP_X, OPERATOR_
   operatorHeight, operatorWidth, serviceChildInsetY, SERVICE_MIN_HEIGHT, SERVICE_WIDTH, type StudioFlowNode } from './projection';
 
 export function variantPositionInHost(host: StudioFlowNode, nodes: readonly StudioFlowNode[], template: GraphNode,
-  requested?: XYPosition): XYPosition {
+  requested?: XYPosition, size?: { readonly width: number; readonly height: number }): XYPosition {
   // A compact, empty service expands to these minimum dimensions once it has children.
   const width = Math.max(Number(host.style?.width ?? SERVICE_WIDTH), SERVICE_WIDTH);
   const top = serviceChildInsetY(host.data.graphNode);
-  const childWidth = operatorWidth(template);
-  const childHeight = operatorHeight(template);
+  const childWidth = size?.width ?? operatorWidth(template);
+  const childHeight = size?.height ?? operatorHeight(template);
   const height = Math.max(Number(host.style?.height ?? SERVICE_MIN_HEIGHT), SERVICE_MIN_HEIGHT, top + childHeight + OPERATOR_GAP_Y);
   const constrain = (position: XYPosition) => constrainOperatorPosition(position, width, height, childHeight, top, childWidth);
   const absolute = (position: XYPosition) => ({ x: host.position.x + position.x, y: host.position.y + position.y });
@@ -29,5 +29,5 @@ export function variantPositionInHost(host: StudioFlowNode, nodes: readonly Stud
         y + childHeight + OPERATOR_GAP_Y <= child.y || y >= child.y + child.height + OPERATOR_GAP_Y)) return absolute(candidate);
     }
   }
-  throw new Error('No free space in this service. Enlarge its container or add the Variant at a chosen canvas position.');
+  throw new Error('No free space in this service. Enlarge its container or add the template at a chosen canvas position.');
 }

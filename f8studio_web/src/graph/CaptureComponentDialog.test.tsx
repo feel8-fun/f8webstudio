@@ -20,7 +20,7 @@ test('captures named selection with authored value exclusions through the server
   fireEvent.change(screen.getByRole('textbox', { name: 'Component name' }), { target: { value: 'Reusable engine' } });
   fireEvent.click(screen.getByRole('checkbox', { name: 'Engine.gain' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save selection as component' }));
-  await waitFor(() => expect(capture).toHaveBeenCalledWith('project', document, 'Reusable engine', [{ nodeId: 'engine', field: 'gain' }], ['engine']));
+  await waitFor(() => expect(capture).toHaveBeenCalledWith('project', document, 'Reusable engine', [{ nodeId: 'engine', field: 'gain' }], ['engine'], { description: '', tags: [] }));
   expect(saved).toHaveBeenCalledWith('Reusable engine');
   expect(close).toHaveBeenCalledOnce();
 });

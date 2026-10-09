@@ -515,6 +515,8 @@ export type CaptureComponentRequest = {
   readonly "excludedStates": ReadonlyArray<ExcludedState>;
   readonly "name": string;
   readonly "nodeIds": ReadonlyArray<string> | null;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
 };
 
 export type CaptureComponentRequestInput = {
@@ -523,6 +525,8 @@ export type CaptureComponentRequestInput = {
   readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
   readonly "name"?: string;
   readonly "nodeIds"?: ReadonlyArray<string> | null;
+  readonly "description"?: string;
+  readonly "tags"?: ReadonlyArray<string>;
 };
 
 export type CaptureVariantRequest = {
@@ -609,6 +613,16 @@ export type ComponentEndpointInput = {
   readonly "nodeId": string;
   readonly "portId": string;
   readonly "direction": PortDirectionInput;
+};
+
+export type ComponentOffset = {
+  readonly "x": number;
+  readonly "y": number;
+};
+
+export type ComponentOffsetInput = {
+  readonly "x": number;
+  readonly "y": number;
 };
 
 export type ComponentPreview = {
@@ -2982,6 +2996,7 @@ export type InsertComponentRequest = {
   readonly "hostBindings": Readonly<Record<string, string>>;
   readonly "x": number;
   readonly "y": number;
+  readonly "hostOffsets": Readonly<Record<string, ComponentOffset>>;
 };
 
 export type InsertComponentRequestInput = {
@@ -2993,6 +3008,7 @@ export type InsertComponentRequestInput = {
   readonly "hostBindings"?: Readonly<Record<string, string>>;
   readonly "x"?: number;
   readonly "y"?: number;
+  readonly "hostOffsets"?: Readonly<Record<string, ComponentOffsetInput>>;
 };
 
 export type InsertComponentResult = {

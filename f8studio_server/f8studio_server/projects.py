@@ -32,6 +32,7 @@ from f8studio_core.graph.state_policy import apply_installed_state_policy
 from .models import CreateProjectRequest, ProjectRecord, ProjectSummary, UpdateProjectRequest
 from .project_repository import ProjectRepository, StoredRequest, utc_now_text
 from .component_models import ComponentSource, InsertComponentRequest, InsertComponentResult
+from .variant_models import VariantSource
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,10 @@ class ProjectService:
     def service_ids(self, project_id: str) -> frozenset[str]:
         project_id = ensure_token(project_id, label="project_id")
         return self._repository.project_service_ids(project_id)
+
+    def variant_sources(self, project_id: str) -> tuple[VariantSource, ...]:
+        nodes = {node.node_id for node in self.document(project_id).nodes}
+        return tuple(source for source in self._repository.variant_sources(project_id) if source.node_id in nodes)
 
     def update(self, project_id: str, request: UpdateProjectRequest) -> ProjectRecord:
         project_id = ensure_token(project_id, label="project_id")

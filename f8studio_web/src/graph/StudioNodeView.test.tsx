@@ -17,6 +17,7 @@ vi.mock('../presentation/PresentationWave', () => ({
 
 vi.mock('./useRuntimeNodeState', () => ({
   useRuntimeNodeState: () => ({
+    uiUpdate: { field: 'uiUpdate', found: true, value: true, tsMs: 1 },
     availableDevices: {
       field: 'availableDevices', found: true,
       value: ['Auto', 'Recording: USB Mic'], tsMs: 1,
@@ -90,12 +91,13 @@ test('renders patch hub terminals without state widgets or runtime values', () =
   expect(container.querySelector('.port-control')).not.toBeInTheDocument();
 });
 
-test('shows wave data in the node and holds the last frame when UI updates are paused', () => {
+test('holds the last wave frame when saved UI configuration pauses updates despite a retained runtime value', () => {
   const node: OperatorNode = {
     kind: 'operator', nodeId: 'wave', name: 'Wave Viz', serviceId: 'studio', serviceClass: 'f8.pystudio',
     operatorClass: 'f8.viz.wave', enabled: true, portIds: {}, stateValues: { uiUpdate: true }, ports: [],
     spec: { serviceClass: 'f8.pystudio', operatorClass: 'f8.viz.wave', label: 'Wave Viz',
-      specKind: 'operator', rendererClass: 'viz_wave', stateFields: [] },
+      specKind: 'operator', rendererClass: 'viz_wave', stateFields: [{ name: 'uiUpdate', access: 'rw', persistent: true,
+        valueSchema: { type: 'boolean', default: true } }] },
   };
   presentationOutput.mockReturnValue({ renderer: 'wave', payload: { series: { x: [[1, 2]] } } });
   const props = { id: 'wave', data: { graphNode: node, childCount: 0 }, selected: false } as NodeProps<StudioFlowNode>;

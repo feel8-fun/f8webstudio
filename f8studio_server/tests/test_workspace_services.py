@@ -185,8 +185,8 @@ def test_assets_are_validated_versioned_and_exportable(tmp_path: Path) -> None:
 
     assert created.current_version == 1
     assert created.tags == ("vision", "local")
-    assert updated.current_version == 2
-    assert [version.version for version in repository.versions(created.asset_id)] == [2, 1]
+    assert updated.current_version == 1
+    assert [version.version for version in repository.versions(created.asset_id)] == [1]
     exported = repository.export(created.asset_id)
     assert exported.schema_version == ASSET_SCHEMA_VERSION
     assert exported.asset.name == "Reusable fragment v2"
@@ -196,8 +196,8 @@ def test_assets_are_validated_versioned_and_exportable(tmp_path: Path) -> None:
         AssetExport(schema_version=exported.schema_version, asset=exported.asset, versions=exported.versions)
     )
     assert imported.content == updated.content
-    assert imported.current_version == 2
-    assert [version.version for version in other.versions(imported.asset_id)] == [2, 1]
+    assert imported.current_version == 1
+    assert [version.version for version in other.versions(imported.asset_id)] == [1]
 
     with pytest.raises(ValueError, match="layout must reference component nodes"):
         repository.create(

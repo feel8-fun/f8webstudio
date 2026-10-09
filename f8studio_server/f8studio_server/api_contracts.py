@@ -16,6 +16,7 @@ from f8studio_core.publication import PublicationCapabilities
 from f8media_protocol import models as media
 from . import assets, editor, local_integration as local, models
 from .component_models import ComponentPreview, InsertComponentRequest, InsertComponentResult
+from .variant_models import CaptureVariantRequest, VariantSource, VariantSummary
 from .agents import models as agents, provider_settings as settings
 from .agents.provider_probe import ProviderProbeResult
 from .catalog import CatalogSnapshot
@@ -81,6 +82,9 @@ ROUTES = MANAGEMENT_ROUTES + (
     RouteContract("post", "/api/catalog/refresh", None, CatalogSnapshot, 200),
     RouteContract("post", "/api/catalog/nodes", CreateCatalogNodeRequest, GraphNode, 200),
     RouteContract("get", "/api/assets", None, tuple[assets.AssetSummary, ...], 200),
+    RouteContract("get", "/api/variants", None, tuple[VariantSummary, ...], 200),
+    RouteContract("get", "/api/projects/{project_id}/variants", None, tuple[VariantSource, ...], 200),
+    RouteContract("post", "/api/projects/{project_id}/variants", CaptureVariantRequest, assets.AssetRecord, 201),
     RouteContract("post", "/api/assets", CreateAssetRequest, assets.AssetRecord, 201),
     RouteContract("post", "/api/assets/import", AssetExport, assets.AssetRecord, 201),
     RouteContract("get", "/api/assets/{asset_id}", None, assets.AssetRecord, 200),

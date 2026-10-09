@@ -20,6 +20,7 @@ from f8studio_core.graph import PatchResult, StudioDocument, decode_document, en
 
 from .models import ProjectRecord, ProjectSummary
 from .component_models import ComponentSource
+from .variant_models import VariantSource
 
 
 SCHEMA_VERSION = 1
@@ -94,6 +95,14 @@ class ProjectRepository:
                     source BLOB NOT NULL,
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (project_id, request_id),
+                    FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS node_variants (
+                    project_id TEXT NOT NULL,
+                    node_id TEXT NOT NULL,
+                    asset_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    PRIMARY KEY (project_id, node_id),
                     FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
                 );
                 """
@@ -361,6 +370,16 @@ class ProjectRepository:
             if component_source is not None:
                 connection.execute("INSERT INTO component_insertions(project_id, request_id, source, created_at) VALUES (?, ?, ?, ?)",
                                    (project_id, result.request_id, msgspec.json.encode(component_source), timestamp))
+                connection.executemany("""INSERT INTO node_variants(project_id, node_id, asset_id, version) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(project_id, node_id) DO UPDATE SET asset_id = excluded.asset_id, version = excluded.version""",
+                    ((project_id, node_id, component_source.asset_id, component_source.version)
+                     for node_id in component_source.node_map.values()))
+
+    def variant_sources(self, project_id: str) -> tuple[VariantSource, ...]:
+        with self._connect() as connection:
+            rows = connection.execute("""SELECT n.node_id, n.asset_id, n.version FROM node_variants n
+                JOIN local_assets a ON n.asset_id = a.asset_id WHERE n.project_id = ? AND a.kind = 'variant'""", (project_id,)).fetchall()
+        return tuple(VariantSource(node_id=_text(row[0]), asset_id=_text(row[1]), version=_integer(row[2])) for row in rows)
 
     def component_source(self, project_id: str, request_id: str) -> ComponentSource:
         with self._connect() as connection:

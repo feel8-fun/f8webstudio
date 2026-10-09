@@ -2,6 +2,7 @@ import { ChevronDown, RefreshCw, Search } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 
 import type { CatalogSnapshot, OperatorSpec, ServiceSpec } from '../api/contracts';
+import type { VariantSummary } from '../api/contracts.gen';
 
 type CatalogSpec = ServiceSpec | OperatorSpec;
 type GroupMode = 'service' | 'category';
@@ -21,6 +22,11 @@ const CATEGORY_LABELS: Readonly<Record<string, string>> = {
 function categoryLabel(category: string): string {
   const suffix = category.split('.').at(-1) ?? category;
   return CATEGORY_LABELS[suffix] ?? suffix.replaceAll('_', ' ');
+}
+
+function variantBelongsTo(variant: VariantSummary, spec: CatalogSpec): boolean {
+  return variant.serviceClass === spec.serviceClass && ('operatorClass' in spec
+    ? variant.nodeKind === 'operator' && variant.operatorClass === spec.operatorClass : variant.nodeKind === 'service');
 }
 
 function operatorGroups(operators: readonly OperatorSpec[], services: readonly ServiceSpec[], mode: GroupMode): readonly CatalogGroup[] {
@@ -54,31 +60,54 @@ function CatalogFold({ label, count, initiallyOpen, children }: {
   </details>;
 }
 
-export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing, onAdd, onRefresh }: {
+export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing, onAdd, onRefresh, variants = [], onAddVariant }: {
   readonly catalog: CatalogSnapshot | null;
   readonly projectServiceClasses: ReadonlySet<string>;
   readonly canAdd: boolean;
   readonly refreshing: boolean;
   readonly onAdd: (spec: CatalogSpec) => void;
   readonly onRefresh: () => void;
+  readonly variants?: readonly VariantSummary[];
+  readonly onAddVariant?: (variant: VariantSummary, configure?: boolean) => void;
 }) {
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<GroupMode>('service');
   const normalizedQuery = query.trim().toLowerCase();
   const serviceLabels = useMemo(() => new Map((catalog?.services ?? []).map((service) => [service.serviceClass, service.label])), [catalog]);
+  const matchingVariants = useMemo(() => variants.filter((variant) =>
+    `${variant.name} ${variant.description} ${variant.serviceClass} ${variant.operatorClass ?? ''} ${variant.tags.join(' ')}`.toLowerCase().includes(normalizedQuery)), [variants, normalizedQuery]);
   const services = useMemo(() => (catalog?.services ?? []).filter((spec) => !spec.hiddenInPalette &&
-    `${spec.label} ${spec.serviceClass} ${(spec.tags ?? []).join(' ')}`.toLowerCase().includes(normalizedQuery)), [catalog, normalizedQuery]);
+    (`${spec.label} ${spec.serviceClass} ${(spec.tags ?? []).join(' ')}`.toLowerCase().includes(normalizedQuery) ||
+      matchingVariants.some((variant) => variantBelongsTo(variant, spec)))), [catalog, normalizedQuery, matchingVariants]);
   const operators = useMemo(() => (catalog?.operators ?? []).filter((spec) => !spec.hiddenInPalette &&
-    `${spec.label} ${spec.operatorClass} ${spec.serviceClass} ${serviceLabels.get(spec.serviceClass) ?? ''} ${spec.paletteCategory ?? ''} ${(spec.tags ?? []).join(' ')}`.toLowerCase().includes(normalizedQuery)), [catalog, normalizedQuery, serviceLabels]);
+    (`${spec.label} ${spec.operatorClass} ${spec.serviceClass} ${serviceLabels.get(spec.serviceClass) ?? ''} ${spec.paletteCategory ?? ''} ${(spec.tags ?? []).join(' ')}`.toLowerCase().includes(normalizedQuery) ||
+      matchingVariants.some((variant) => variantBelongsTo(variant, spec)))), [catalog, normalizedQuery, serviceLabels, matchingVariants]);
   const groups = useMemo(() => operatorGroups(operators, catalog?.services ?? [], mode), [operators, catalog, mode]);
 
-  const operatorButton = (spec: OperatorSpec) => {
-    const available = projectServiceClasses.has(spec.serviceClass) || spec.serviceClass === 'f8.pystudio';
-    return <button key={`${spec.serviceClass}:${spec.operatorClass}`} type="button" disabled={!canAdd || !available}
+  const variantButtons = (items: readonly VariantSummary[]) => items.map((variant) => <div className="catalog-variant" key={variant.assetId}>
+    <button type="button" disabled={!canAdd || !onAddVariant} onClick={() => onAddVariant?.(variant)} title={variant.description}>
+      <strong>{variant.name}</strong><span>Variant · v{variant.currentVersion}</span>
+    </button>
+    <button className="catalog-variant-versions" type="button" disabled={!canAdd || !onAddVariant}
+      aria-label={`Choose version for ${variant.name}`} onClick={() => onAddVariant?.(variant, true)}>Versions…</button>
+  </div>);
+  const specEntry = (spec: CatalogSpec) => {
+    const available = !('operatorClass' in spec) || projectServiceClasses.has(spec.serviceClass) || spec.serviceClass === 'f8.pystudio';
+    const owned = variants.filter((variant) => variantBelongsTo(variant, spec));
+    const filtered = owned.filter((variant) => matchingVariants.includes(variant));
+    const shown = filtered.length > 0 ? filtered : owned;
+    return <div className="catalog-type" key={`${spec.serviceClass}:${'operatorClass' in spec ? spec.operatorClass : 'service'}`}>
+      <button type="button" disabled={!canAdd || !available}
       title={available ? spec.description : `Requires ${spec.serviceClass}`} onClick={() => onAdd(spec)}>
-      <strong>{spec.label}</strong><span>{spec.operatorClass}</span>
-    </button>;
+        <strong>{spec.label}</strong><span>{'operatorClass' in spec ? spec.operatorClass : spec.serviceClass}</span>
+      </button>
+      {owned.length > 0 && <details className="catalog-variants" key={normalizedQuery} open={normalizedQuery !== '' || undefined}>
+        <summary><ChevronDown size={12} /><span>Variants</span><small>{shown.length}</small></summary>{variantButtons(shown)}
+      </details>}
+    </div>;
   };
+  const unlisted = matchingVariants.filter((variant) => ![...(catalog?.services ?? []), ...(catalog?.operators ?? [])]
+    .some((spec) => !spec.hiddenInPalette && variantBelongsTo(variant, spec)));
 
   return <>
     <div className="catalog-search-row"><label className="catalog-search"><Search size={15} />
@@ -91,16 +120,15 @@ export function NodeCatalog({ catalog, projectServiceClasses, canAdd, refreshing
     </div>
     <div className="catalog-list">
       <CatalogFold label="Services" count={services.length} initiallyOpen key={`services:${normalizedQuery !== ''}`}>
-        {services.map((spec) => <button key={spec.serviceClass} type="button" disabled={!canAdd} onClick={() => onAdd(spec)}>
-          <strong>{spec.label}</strong><span>{spec.serviceClass}</span>
-        </button>)}
+        {services.map(specEntry)}
       </CatalogFold>
       <h2>Operators</h2>
       {groups.map((group) => <CatalogFold label={group.label} count={group.specs.length} key={`${mode}:${group.key}:${normalizedQuery !== ''}`}
         initiallyOpen={normalizedQuery !== ''}>
-        {group.specs.map(operatorButton)}
+        {group.specs.map(specEntry)}
       </CatalogFold>)}
       {groups.length === 0 && <p className="catalog-empty">No matching operators</p>}
+      {unlisted.length > 0 && <CatalogFold label="Other Variants" count={unlisted.length} initiallyOpen>{variantButtons(unlisted)}</CatalogFold>}
     </div>
   </>;
 }

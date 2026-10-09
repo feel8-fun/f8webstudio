@@ -59,13 +59,26 @@ export function AssetsWorkspace() {
   useEffect(() => {
     setPreview(null);
     setHostBindings({});
-    if (selected?.kind !== 'component') return;
+    if (selected?.kind !== 'component' && selected?.kind !== 'variant') return;
     const controller = new AbortController();
     void fetchComponentPreview(selected.assetId, previewVersion, controller.signal).then(setPreview,
       (error: unknown) => { if (!controller.signal.aborted) setStatus(error instanceof Error ? error.message : 'Preview failed'); });
     return () => controller.abort();
   }, [selected?.assetId, selected?.kind, selected?.currentVersion, previewVersion]);
   useEffect(() => { insertionRequestId.current = null; }, [selected?.assetId, previewVersion, projectId, hostBindings]);
+  useEffect(() => {
+    if (selected?.kind !== 'variant' || preview === null || projectRecord === null) return;
+    setHostBindings((previous) => {
+      const next: Record<string, string> = {};
+      for (const binding of preview.component.hostBindings) {
+        const hosts = projectRecord.document.nodes.filter((node) => node.kind === 'service' && node.serviceClass === binding.serviceClass);
+        if (binding.serviceClass === 'f8.pystudio') next[binding.bindingId] = 'studio';
+        else if (hosts.some((node) => node.serviceId === previous[binding.bindingId])) next[binding.bindingId] = previous[binding.bindingId]!;
+        else if (hosts.length === 1) next[binding.bindingId] = hosts[0]!.serviceId;
+      }
+      return next;
+    });
+  }, [selected?.kind, preview, projectRecord]);
 
   const reload = useCallback(async () => {
     const [nextAssets, nextProjects] = await Promise.all([fetchAssets(), fetchProjects()]);
@@ -104,7 +117,7 @@ export function AssetsWorkspace() {
     try {
       const created = await createAsset({
         kind,
-        name: kind === 'component' ? 'New component' : 'New variant',
+        name: kind === 'component' ? 'New component' : 'New preset',
         content: (kind === 'component' ? EMPTY_COMPONENT : EMPTY_VARIANT) as JsonValue,
       });
       await reload();
@@ -118,7 +131,7 @@ export function AssetsWorkspace() {
     if (selected === null) return;
     try {
       const parsed = JSON.parse(content) as JsonValue;
-      const updated = await updateAsset(selected.assetId, { name, description, tags: selected.tags, content: parsed });
+      const updated = await updateAsset(selected.assetId, { name, description, tags: selected.tags, content: parsed, expectedVersion: selected.currentVersion });
       setSelected(updated);
       setPreviewVersion(updated.currentVersion);
       setVersions(await fetchAssetVersions(updated.assetId));
@@ -179,7 +192,7 @@ export function AssetsWorkspace() {
   const applyAsset = useCallback(async () => {
     if (selected === null || projectRecord === null) return;
     try {
-      if (selected.kind === 'component') {
+      if (selected.kind === 'component' || selected.kind === 'variant') {
         if (preview === null || preview.issues.length > 0) throw new Error('Resolve component requirements before insertion');
         insertionRequestId.current ??= `component:${crypto.randomUUID()}`;
         const result = await insertProjectComponent(projectRecord.projectId, {
@@ -190,17 +203,20 @@ export function AssetsWorkspace() {
         insertionRequestId.current = null;
         setProjectRecord({ ...projectRecord, document: result.patch.document });
         if (result.source.endpoints.length > 0) setStatus(`Inserted component; connect ${result.source.endpoints.length} exposed port(s) in Graph`);
-      } else if (selected.kind === 'variant') {
+      } else if (selected.kind === 'preset') {
         if (!targetNodeId) throw new Error('Select a target node');
         if (typeof selected.content !== 'object' || selected.content === null || Array.isArray(selected.content)) throw new Error('Invalid variant content');
         const variant = selected.content as Readonly<Record<string, JsonValue>>;
+        const target = projectRecord.document.nodes.find((node) => node.nodeId === targetNodeId);
+        if (!target || target.serviceClass !== variant.serviceClass ||
+          (target.kind === 'operator' ? target.operatorClass : null) !== (variant.operatorClass ?? null)) throw new Error('Preset requires a matching service/operator class');
         const stateValues = variant.stateValues;
         if (typeof stateValues !== 'object' || stateValues === null || Array.isArray(stateValues)) throw new Error('Variant requires stateValues');
         const operations = Object.entries(stateValues as Readonly<Record<string, JsonValue>>).map(([field, value]) => ({ op: 'setNodeState' as const, nodeId: targetNodeId, field, value }));
         const result = await patchProject(projectRecord.projectId, projectRecord.document, operations);
         setProjectRecord({ ...projectRecord, document: result.document });
       }
-      if (selected.kind !== 'component' || preview?.component.endpoints.length === 0) setStatus(`Applied ${selected.kind} to project`);
+      if (selected.kind === 'preset' || preview?.component.endpoints.length === 0) setStatus(`Applied ${selected.kind} to project`);
     } catch (error: unknown) { setStatus(error instanceof Error ? error.message : 'Asset apply failed'); }
   }, [projectRecord, selected, targetNodeId, preview, hostBindings]);
 
@@ -210,7 +226,7 @@ export function AssetsWorkspace() {
         <div className="pane-heading">Local assets</div>
         <div className="asset-actions">
           <button className="command-button" type="button" onClick={() => void addAsset('component')}><Plus size={14} />Component</button>
-          <button className="command-button" type="button" onClick={() => void addAsset('variant')}><Plus size={14} />Variant</button>
+          <button className="command-button" type="button" onClick={() => void addAsset('preset')}><Plus size={14} />Preset</button>
         </div>
         <div className="asset-list">
           {assets.map((asset) => <button className={selected?.assetId === asset.assetId ? 'selected' : ''} type="button" key={asset.assetId} onClick={() => void selectAsset(asset.assetId)}>
@@ -233,12 +249,12 @@ export function AssetsWorkspace() {
         {selected === null ? <div className="empty-state centered">Select or create an asset</div> : <>
           <div className="tool-strip">
             <input className="plain-input asset-name" value={name} onChange={(event) => setName(event.target.value)} aria-label="Asset name" />
-            {selected.kind === 'variant' && <select className="plain-input asset-target" value={targetNodeId} onChange={(event) => setTargetNodeId(event.target.value)} aria-label="Variant target node">{projectRecord?.document.nodes.map((node) => <option value={node.nodeId} key={node.nodeId}>{node.name}</option>)}</select>}
+            {selected.kind === 'preset' && <select className="plain-input asset-target" value={targetNodeId} onChange={(event) => setTargetNodeId(event.target.value)} aria-label="Preset target node">{projectRecord?.document.nodes.map((node) => <option value={node.nodeId} key={node.nodeId}>{node.name}</option>)}</select>}
             <span className="tool-status" role="status">{status}</span>
             <button className="icon-button bordered" type="button" aria-label="Export asset" title="Export asset" onClick={() => downloadJson(`${selected.name}.json`, { schemaVersion: 'f8studio-asset/1', asset: selected, versions })}><Download size={16} /></button>
             <button className="icon-button bordered danger" type="button" aria-label="Delete asset" title="Delete asset" onClick={() => void removeAsset()}><Trash2 size={16} /></button>
             <button className="command-button primary" type="button" onClick={() => void save()}><Save size={15} />Save version</button>
-            <button className="command-button" type="button" disabled={projectRecord === null || (selected.kind === 'component' &&
+            <button className="command-button" type="button" disabled={projectRecord === null || ((selected.kind === 'component' || selected.kind === 'variant') &&
               (preview === null || preview.component.presentation.nodeOrder.length === 0 || preview.issues.length > 0 || preview.component.hostBindings.some((binding) => !hostBindings[binding.bindingId])))} onClick={() => void applyAsset()}>Apply</button>
           </div>
           <label className="field-stack">Description<input className="plain-input" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
@@ -249,8 +265,9 @@ export function AssetsWorkspace() {
               Host for {binding.serviceClass}<select aria-label={`Host for ${binding.bindingId}`} value={hostBindings[binding.bindingId] ?? ''}
                 onChange={(event) => setHostBindings((previous) => ({ ...previous, [binding.bindingId]: event.target.value }))}>
                 <option value="">Choose an existing service</option>
-                {projectRecord?.document.nodes.filter((node) => node.kind === 'service' && node.serviceClass === binding.serviceClass)
-                  .map((node) => <option key={node.nodeId} value={node.nodeId}>{node.name}</option>)}
+                {selected.kind === 'variant' && binding.serviceClass === 'f8.pystudio' ? <option value="studio">Web Studio Runtime</option> :
+                  projectRecord?.document.nodes.filter((node) => node.kind === 'service' && node.serviceClass === binding.serviceClass)
+                    .map((node) => <option key={node.nodeId} value={node.nodeId}>{node.name}</option>)}
               </select>
             </label>)}
             {preview.component.endpoints.length > 0 && <p>Connect these exposed ports after insertion: {preview.component.endpoints.map((endpoint) => `${endpoint.nodeId}/${endpoint.portId}`).join(', ')}</p>}

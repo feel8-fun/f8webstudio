@@ -1,8 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { expect, test, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
 
 import type { CatalogSnapshot } from '../api/contracts';
 import { NodeCatalog } from './NodeCatalog';
+import type { VariantSummary } from '../api/contracts.gen';
+
+afterEach(cleanup);
 
 const catalog: CatalogSnapshot = {
   services: [
@@ -33,4 +36,24 @@ test('groups operators by service or category and expands search matches', () =>
   expect(onAdd).toHaveBeenCalledWith(catalog.operators[0]);
   fireEvent.click(screen.getByRole('button', { name: 'Refresh node catalog' }));
   expect(onRefresh).toHaveBeenCalledOnce();
+});
+
+test('places service and operator variants under their types and finds variants by name', () => {
+  const variants: readonly VariantSummary[] = [
+    { assetId: 's', name: 'Configured Engine', description: '', tags: [], currentVersion: 1, nodeKind: 'service', serviceClass: 'test.engine', operatorClass: null },
+    { assetId: 'o', name: 'Soft Filter', description: '', tags: [], currentVersion: 2, nodeKind: 'operator', serviceClass: 'test.engine', operatorClass: 'test.filter' },
+  ];
+  const add = vi.fn();
+  render(<NodeCatalog catalog={catalog} projectServiceClasses={new Set(['test.engine'])} canAdd refreshing={false}
+    variants={variants} onAddVariant={add} onAdd={vi.fn()} onRefresh={vi.fn()} />);
+  const engine = screen.getByRole('button', { name: /Engine.*test.engine/ }).closest('.catalog-type');
+  if (!(engine instanceof HTMLElement)) throw new Error('Missing Engine type');
+  expect(within(engine).getByText('Configured Engine')).toBeInTheDocument();
+  expect(within(engine).queryByText('Soft Filter')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('Search nodes'), { target: { value: 'Soft' } });
+  fireEvent.click(screen.getByRole('button', { name: /Soft Filter.*Variant · v2/ }));
+  expect(add).toHaveBeenCalledWith(variants[1]);
+  fireEvent.click(screen.getByRole('button', { name: 'Choose version for Soft Filter' }));
+  expect(add).toHaveBeenCalledWith(variants[1], true);
+  expect(screen.queryByText('Configured Engine')).not.toBeInTheDocument();
 });

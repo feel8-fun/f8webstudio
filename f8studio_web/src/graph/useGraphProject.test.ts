@@ -65,6 +65,22 @@ test('failed edit reloads authoritative state and invalidates dependent edits', 
   expect(result.current.error).not.toBeNull();
 });
 
+test('applies saved configuration from the HTTP response without a broadcast even when runtime synchronization fails', async () => {
+  const tick = { kind: 'operator' as const, nodeId: 'tick', name: 'Tick', serviceId: 'engine', serviceClass: 'f8.pyengine',
+    operatorClass: 'f8.tick', enabled: true, ports: [], portIds: {}, stateValues: { tickMs: 100 },
+    spec: { specKind: 'operator' as const, serviceClass: 'f8.pyengine', operatorClass: 'f8.tick', label: 'Tick' } };
+  const record = { ...initial, document: { ...initial.document, nodes: [tick] } };
+  api.fetchProject.mockResolvedValue(record);
+  const { result } = renderHook(() => useGraphProject(reset, report));
+  await waitFor(() => expect(result.current.project).toEqual(record));
+  api.patchProject.mockResolvedValue({ document: { ...record.document, graphRevision: 1,
+    nodes: [{ ...tick, stateValues: { tickMs: 250 } }] }, graphChanged: true, runtimeErrors: ['service offline'] });
+  await act(async () => { await result.current.commit([{ op: 'setNodeState', nodeId: 'tick', field: 'tickMs', value: 250 }]); });
+  expect(result.current.project?.document.nodes[0]?.stateValues.tickMs).toBe(250);
+  expect(result.current.error).toContain('Saved to project, but runtime sync failed');
+  expect(result.current.saving).toBe(false);
+});
+
 test('late graph events cannot roll back a newer revision and unsubscribe on unmount', async () => {
   let receive: (event: StudioEvent) => void = () => {};
   events.subscribe.mockImplementation((listener: typeof receive) => { receive = listener; return events.unsubscribe; });

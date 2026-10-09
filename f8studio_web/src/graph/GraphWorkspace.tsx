@@ -5,8 +5,8 @@ import { useGraphProject } from './useGraphProject';
 import { useGraphCanvas } from './useGraphCanvas';
 import { useGraphCommands } from './useGraphCommands';
 import { useProjectDeployment } from './useProjectDeployment';
-import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, type Edge } from '@xyflow/react';
-import { Bot, Box, Copy, Download, Play, Plus, Redo2, RotateCcw, Share2, Square, Upload, X } from 'lucide-react';
+import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow, type Edge } from '@xyflow/react';
+import { Bot, Copy, Download, Play, Plus, Redo2, RotateCcw, Share2, Square, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { useLivePrefix } from '../api/liveStore';
@@ -21,6 +21,10 @@ import { NodeCatalog } from './NodeCatalog';
 import { ProjectControl } from './ProjectControl';
 import { NodeQuickSearch } from './NodeQuickSearch';
 import { PortContextMenu, type PortMenuTarget } from './PortContextMenu';
+import { NodeContextMenu, type NodeMenuTarget } from './NodeContextMenu';
+import { CaptureVariantDialog, variantMatchesNode } from './CaptureVariantDialog';
+import { VariantInsertion } from './VariantInsertion';
+import { useVariants } from './useVariants';
 import { canPastePortType, pastePortTypeOperation, type CopiedPortType } from './portType';
 
 const nodeTypes = { studio: StudioNodeView };
@@ -41,6 +45,13 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   const [capturingIds, setCapturingIds] = useState<readonly string[] | null>(null);
   const closeCapture = useCallback(() => setCapturingIds(null), []);
   const [quickSearch, setQuickSearch] = useState(false);
+  const [nodeMenu, setNodeMenu] = useState<NodeMenuTarget | null>(null);
+  const closeNodeMenu = useCallback(() => setNodeMenu(null), []);
+  const [variantCapture, setVariantCapture] = useState<{ nodeId: string; updating: boolean } | null>(null);
+  const closeVariantCapture = useCallback(() => setVariantCapture(null), []);
+  const [variantInsertion, setVariantInsertion] = useState<{ assetId?: string; configure?: boolean; serviceId?: string; position?: { x: number; y: number } } | null>(null);
+  const closeNodeSearch = useCallback(() => { setQuickSearch(false); setVariantInsertion(null); }, []);
+  const { screenToFlowPosition } = useReactFlow();
   const [portMenu, setPortMenu] = useState<PortMenuTarget | null>(null);
   const [copiedType, setCopiedType] = useState<CopiedPortType | null>(null);
   const closePortMenu = useCallback(() => setPortMenu(null), []);
@@ -57,6 +68,8 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   const { projects, selectedProjectId, project, catalog, busy, setBusy, saving, error, setError,
     deployment, setDeployment, setCatalog, refreshingCatalog, reloadProject, commit,
     selectProject, addProject, removeProject, renameProject, history, downloadGraph, uploadGraph, refreshNodeCatalog } = projectState;
+  const library = useVariants(project?.projectId ?? null, project?.document.graphRevision);
+  const captureNode = project?.document.nodes.find((node) => node.nodeId === variantCapture?.nodeId);
   const canvas = useGraphCanvas({ project, busy, setBusy, setError, commit, reloadProject, selectedNodeId, selectedEdgeId, setSelectedNodeId, setSelectedEdgeId });
   const { nodes, edges, onNodesChange, onEdgesChange, graphCanvasRef, selectedNode, selectedEdge, addSpec, connect, connectionEnded, isValidConnection,
     deleteNodes, deleteEdges, beginNodeDrag, dragNode, moveNode, duplicateSelection, bindOperatorService, connectedStateInputs,
@@ -102,7 +115,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
   const locked = busy || saving;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || quickSearch || portMenu || activeCommand || locked || !project) return;
+      if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey || quickSearch || portMenu || nodeMenu || activeCommand || locked || !project) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && (active.matches('input, textarea, select, button, [contenteditable="true"], [role="separator"]') || active.closest('[role="dialog"]'))) return;
       event.preventDefault();
@@ -110,8 +123,8 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [quickSearch, portMenu, activeCommand, locked, project]);
-  useEffect(() => { setQuickSearch(false); setPortMenu(null); }, [selectedProjectId]);
+  }, [quickSearch, portMenu, nodeMenu, activeCommand, locked, project]);
+  useEffect(() => { setQuickSearch(false); setPortMenu(null); setNodeMenu(null); setVariantCapture(null); setVariantInsertion(null); }, [selectedProjectId]);
 
   const resizeInspector = (clientX: number): void => {
     const bounds = graphWorkspaceRef.current?.getBoundingClientRect();
@@ -134,6 +147,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           onSelect={selectProject} onAdd={addProject} onRemove={removeProject} onRename={renameProject} />
         <NodeCatalog catalog={catalog} projectServiceClasses={new Set(project?.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))}
           canAdd={!busy && !refreshingCatalog && project !== null} refreshing={busy || refreshingCatalog}
+          variants={library.variants} onAddVariant={(variant, configure) => setVariantInsertion({ assetId: variant.assetId, configure })}
           onAdd={(spec) => void addSpec(spec)} onRefresh={() => void refreshNodeCatalog()} />
       </aside>
 
@@ -146,6 +160,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
         if (!node || !port) return;
         event.preventDefault();
         event.stopPropagation();
+        closeNodeMenu();
         setPortMenu({ node, port, x: event.clientX, y: event.clientY });
       }}>
         <div className="graph-toolbar">
@@ -154,10 +169,6 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           <button type="button" title="Undo" aria-label="Undo" disabled={busy || project === null} onClick={() => void history('undo')}><RotateCcw size={16} /></button>
           <button type="button" title="Redo" aria-label="Redo" disabled={busy || project === null} onClick={() => void history('redo')}><Redo2 size={16} /></button>
           <button type="button" title="Duplicate selection" aria-label="Duplicate selection" disabled={busy || project === null || (selectedNodeId === null && !nodes.some((node) => node.selected))} onClick={duplicateSelection}><Copy size={15} /></button>
-          <button type="button" title="Save selection as component" aria-label="Save selection as component" disabled={locked || project === null || (selectedNodeId === null && !nodes.some((node) => node.selected))} onClick={() => {
-            const ids = nodes.filter((node) => node.selected).map((node) => node.id);
-            setCapturingIds(ids.length > 0 ? ids : selectedNodeId === null ? [] : [selectedNodeId]);
-          }}><Box size={15} /></button>
           <button type="button" title="Export local backup (includes private saved values)" aria-label="Export graph" disabled={busy || project === null} onClick={() => void downloadGraph().catch((reason: unknown) => console.error("Graph export failed", reason))}><Download size={15} /></button>
           <button type="button" title="Export shared graph" aria-label="Export shared graph" disabled={busy || saving || project === null} onClick={() => setSharing(true)}><Share2 size={15} /></button>
           <button type="button" title="Import graph" aria-label="Import graph" disabled={busy || project === null} onClick={() => graphImportRef.current?.click()}><Upload size={15} /></button>
@@ -187,6 +198,15 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
             onNodeDragStart={beginNodeDrag}
             onNodeDrag={dragNode}
             onNodeDragStop={moveNode}
+            onNodeContextMenu={(event, node) => {
+              if (event.target instanceof Element && event.target.closest('.port-label, .react-flow__handle, [data-port-node]')) return;
+              event.preventDefault(); event.stopPropagation(); setPortMenu(null);
+              setNodeMenu({ node: node.data.graphNode, x: event.clientX, y: event.clientY });
+            }}
+            onPaneContextMenu={(event) => {
+              event.preventDefault(); event.stopPropagation(); setPortMenu(null);
+              setNodeMenu({ node: null, x: event.clientX, y: event.clientY });
+            }}
             onNodeClick={(_event, node) => {
               setSelectedNodeId(node.id);
               setSelectedEdgeId(null);
@@ -214,7 +234,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
             <Controls showInteractive={false} />
             <MiniMap pannable zoomable nodeColor={(node) => node.className === 'flow-node-service' ? '#469b79' : '#5d7896'} />
           </ReactFlow></GraphNodeInteractionContext.Provider>}
-        {error !== null && <div className="graph-error" role="alert">{error}</div>}
+        {(error ?? library.error) !== null && <div className="graph-error" role="alert">{error ?? library.error}</div>}
       </section>
 
       <div className="graph-inspector-resizer" role="separator" aria-label="Resize Inspector" aria-orientation="vertical"
@@ -257,7 +277,29 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
       {activeCommand !== null && <CommandDialog key={`${activeCommand.node.nodeId}:${activeCommand.command.name}`} node={activeCommand.node} command={activeCommand.command} onClose={resetCommand} onResult={reportCommand} />}
       {sharing && project !== null && <ShareStateDialog key={project.projectId} title="Export shared graph" document={project.document} onClose={closeSharing} onShare={(excluded) => downloadGraph(excluded)} />}
       {capturingIds !== null && project !== null && <CaptureComponentDialog key={project.projectId} document={project.document} nodeIds={capturingIds} onClose={closeCapture} onSaved={(name) => reportCommand('success', 'Component saved', name)} />}
-      {quickSearch && <NodeQuickSearch catalog={catalog} services={new Set(project?.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))} onAdd={(spec) => void addSpec(spec)} onClose={() => setQuickSearch(false)} />}
+      {variantCapture !== null && captureNode && project && <CaptureVariantDialog key={`${project.projectId}:${captureNode.nodeId}`} document={project.document}
+        node={captureNode} updating={variantCapture.updating} variants={library.variants} source={library.sources.find((source) => source.nodeId === captureNode.nodeId)}
+        onClose={closeVariantCapture} onSaved={(name) => reportCommand('success', 'Variant saved', name)} />}
+      {nodeMenu && project && <NodeContextMenu target={nodeMenu} busy={locked}
+        hasSource={library.sources.some((source) => source.nodeId === nodeMenu.node?.nodeId)}
+        canSaveVariant={nodeMenu.node !== null && !(nodeMenu.node.kind === 'service' && nodeMenu.node.serviceClass === 'f8.pystudio')}
+        canUpdateVariant={nodeMenu.node !== null && library.variants.some((variant) => nodeMenu.node !== null && variantMatchesNode(variant, nodeMenu.node))}
+        canCapture={nodeMenu.node !== null || nodes.some((node) => node.selected)} onClose={closeNodeMenu}
+        onSaveVariant={() => { if (nodeMenu.node) setVariantCapture({ nodeId: nodeMenu.node.nodeId, updating: false }); closeNodeMenu(); }}
+        onUpdateVariant={() => { if (nodeMenu.node) setVariantCapture({ nodeId: nodeMenu.node.nodeId, updating: true }); closeNodeMenu(); }}
+        onCapture={() => {
+          const selected = nodes.filter((node) => node.selected).map((node) => node.id);
+          setCapturingIds(nodeMenu.node && !selected.includes(nodeMenu.node.nodeId) ? [nodeMenu.node.nodeId] : selected);
+          closeNodeMenu();
+        }} onAddNode={() => { setVariantInsertion({ position: screenToFlowPosition({ x: nodeMenu.x, y: nodeMenu.y }), serviceId: nodeMenu.node?.serviceId }); closeNodeMenu(); }} />}
+      {(quickSearch || variantInsertion !== null) && project && <NodeQuickSearch key={project.projectId} catalog={catalog}
+        services={new Set(project.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))}
+        variants={library.variants} initialVariant={library.variants.find((variant) => variant.assetId === variantInsertion?.assetId)}
+        configureVariant={variantInsertion?.configure} onAdd={(spec) => void addSpec(spec, variantInsertion?.serviceId)} onClose={closeNodeSearch}
+        renderVariant={(variant, configure, onBack, onBusy) => <VariantInsertion key={variant.assetId} document={project.document}
+          variant={variant} configure={configure} preferredServiceId={variantInsertion?.serviceId ?? selectedNode?.serviceId}
+          position={variantInsertion?.position} onBack={onBack} onBusy={onBusy}
+          onInserted={async (name) => { await reloadProject(project.projectId); reportCommand('success', 'Variant added', name); closeNodeSearch(); }} />} />}
       {portMenu && <PortContextMenu target={portMenu} copied={copiedType} busy={locked} onClose={closePortMenu} onCopy={(value) => { setCopiedType(value); closePortMenu(); }} onPaste={() => {
         if (!copiedType || !project) return;
         const node = project.document.nodes.find((item) => item.nodeId === portMenu.node.nodeId);

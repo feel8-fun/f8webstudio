@@ -1,5 +1,5 @@
 import { Code2 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 
 import type { GraphNode, JsonValue, RuntimeStateField, StateSpec } from '../api/contracts';
 
@@ -21,7 +21,20 @@ export function stateOptionPoolField(field: StateSpec): string | null {
 
 function fieldValue(node: GraphNode, fieldName: string): JsonValue {
   const field = (node.spec.stateFields ?? []).find((candidate) => candidate.name === fieldName);
-  return node.stateValues[fieldName] ?? field?.valueSchema.default ?? null;
+  return Object.hasOwn(node.stateValues, fieldName) ? node.stateValues[fieldName]! : field?.valueSchema.default ?? null;
+}
+
+export function displayedStateValue(node: GraphNode, field: StateSpec, runtimeValue: RuntimeStateField | undefined,
+  connected = false): JsonValue {
+  const usesRuntime = field.access !== 'wo' && (field.access === 'ro' || connected || field.persistent === false);
+  return usesRuntime && runtimeValue?.found === true ? runtimeValue.value : fieldValue(node, field.name);
+}
+
+function blurOnEnter(event: KeyboardEvent<HTMLInputElement>): void {
+  if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+    event.preventDefault();
+    event.currentTarget.blur();
+  }
 }
 
 function numericBound(node: GraphNode, field: StateSpec, bound: 'minimum' | 'maximum'): number | undefined {
@@ -61,8 +74,7 @@ export function StateFieldControl({
   readonly onCommit: (value: JsonValue) => void;
 }) {
   const readOnly = field.access === 'ro';
-  const configuredValue = fieldValue(node, field.name);
-  const value = field.access !== 'wo' && runtimeValue?.found === true ? runtimeValue.value : configuredValue;
+  const value = displayedStateValue(node, field, runtimeValue, connected);
   const triggerCounter = useRef({ key: `${node.nodeId}:${field.name}`, value: 0 });
   const [draft, setDraft] = useState(displayValue(value));
   const editing = useRef(false);
@@ -201,7 +213,7 @@ export function StateFieldControl({
     }
     return <label className={shellClass} title={title}>
       {!compact && <span>{label}</span>}
-      <input type="number" value={draft} min={minimum} max={maximum} step={step} readOnly={controlDisabled} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => {
+      <input type="number" value={draft} min={minimum} max={maximum} step={step} readOnly={controlDisabled} onKeyDown={blurOnEnter} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => {
         editing.current = false;
         const parsed = Number(event.target.value);
         if (!Number.isFinite(parsed)) return;
@@ -219,18 +231,24 @@ export function StateFieldControl({
       {!compact && <span>{label}</span>}
       {multiline && !compact
         ? <textarea rows={4} value={draft} readOnly={controlDisabled} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={() => { editing.current = false; commitChanged(draft); }} />
-        : <input value={draft} readOnly={controlDisabled} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={() => { editing.current = false; commitChanged(draft); }} />}
+        : <input value={draft} readOnly={controlDisabled} onKeyDown={blurOnEnter} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={() => { editing.current = false; commitChanged(draft); }} />}
       {connected && !compact && <small aria-hidden="true">Upstream</small>}
     </label>;
   }
   if (compact) {
     return <label className={`${shellClass} state-text-json`} title={title}>
-      <input value={draft} readOnly={controlDisabled} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => commitJsonDraft(event.target.value, event.target)} />
+      <input value={draft} readOnly={controlDisabled} onKeyDown={blurOnEnter} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => {
+        editing.current = false;
+        commitJsonDraft(event.target.value, event.target);
+      }} />
     </label>;
   }
   return <label className={shellClass} title={title}>
     {!compact && <span>{label}</span>}
-    <textarea rows={4} value={draft} readOnly={controlDisabled} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => commitJsonDraft(event.target.value, event.target)} />
+    <textarea rows={4} value={draft} readOnly={controlDisabled} onFocus={() => { editing.current = true; }} onChange={(event) => setDraft(event.target.value)} onBlur={(event) => {
+      editing.current = false;
+      commitJsonDraft(event.target.value, event.target);
+    }} />
     {connected && !compact && <small aria-hidden="true">Upstream</small>}
   </label>;
 }

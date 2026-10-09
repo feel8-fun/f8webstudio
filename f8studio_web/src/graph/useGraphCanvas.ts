@@ -169,7 +169,7 @@ export function useGraphCanvas({ project, busy, setBusy, setError, commit, reloa
     ]);
   }, [busy, commit, project]);
 
-  const addSpec = useCallback(async (spec: ServiceSpec | OperatorSpec) => {
+  const addSpec = useCallback(async (spec: ServiceSpec | OperatorSpec, preferredServiceId?: string) => {
     if (project === null || busy) return;
     setBusy(true);
     setError(null);
@@ -185,7 +185,7 @@ export function useGraphCanvas({ project, busy, setBusy, setError, commit, reloa
           (node) => node.kind === 'service' && node.serviceClass === spec.serviceClass,
         );
         const currentSelection = project.document.nodes.find((node) => node.nodeId === selectedNodeId);
-        let service = compatibleServices.find((node) => node.nodeId === currentSelection?.nodeId ||
+        let service = compatibleServices.find((node) => node.serviceId === preferredServiceId) ?? compatibleServices.find((node) => node.nodeId === currentSelection?.nodeId ||
           node.serviceId === (currentSelection?.kind === 'operator' ? currentSelection.serviceId : null));
         if (service === undefined && compatibleServices.length === 1) service = compatibleServices[0];
         if (service === undefined && compatibleServices.length > 1) {

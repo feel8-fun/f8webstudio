@@ -25,9 +25,13 @@ from f8studio_core.graph import GraphEdge, NodeLayout, OperatorNode, ServiceNode
 from f8studio_core.graph.models import DOCUMENT_SCHEMA_VERSION, GraphNode
 from f8studio_core.graph.state_policy import ExcludedState, apply_installed_state_policy, project_document_for_sharing, upgrade_document
 from f8studio_core.graph.codec import decode_document
+from f8studio_core.graph.codec import canonical_json_bytes
 from f8studio_core.graph.spec_edit import validate_spec_snapshot
 from f8studio_core.graph.validation import validate_state_value
 from f8studio_core.publication import capture_component, component_document, decode_component
+from .variant_models import VariantSummary
+from .variants import variant_node
+from f8studio_core.graph import RevisionConflictError
 
 
 ASSET_SCHEMA_VERSION = "f8studio-asset/1"
@@ -40,6 +44,7 @@ logger = logging.getLogger(__name__)
 class AssetKind(str, enum.Enum):
     component = "component"
     variant = "variant"
+    preset = "preset"
     modding_recipe = "modding_recipe"
 
 
@@ -93,6 +98,7 @@ class UpdateAssetRequest(msgspec.Struct, frozen=True, kw_only=True, rename="came
     content: F8JsonValue
     description: str = ""
     tags: tuple[str, ...] = ()
+    expected_version: int | None = None
 
 
 class AssetExport(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
@@ -145,7 +151,7 @@ SpecResolver = Callable[[str, str | None], F8ServiceSpec | F8OperatorSpec]
 def _validate_content(kind: AssetKind, content: F8JsonValue, *,
                       spec_resolver: SpecResolver | None = None) -> F8JsonValue:
     encoded = msgspec.json.encode(content)
-    if kind is AssetKind.component:
+    if kind is AssetKind.component or (kind is AssetKind.variant and isinstance(content, dict) and content.get("format") == "f8component"):
         if isinstance(content, dict) and content.get("format") == "f8component":
             try:
                 portable = decode_component(encoded)
@@ -174,7 +180,13 @@ def _validate_content(kind: AssetKind, content: F8JsonValue, *,
                 cleaned = capture_component(document, node_ids=tuple(portable.presentation.node_order) or None)
             except ValueError as exc:
                 raise InvalidRequestError(f"cannot normalize portable component: {exc}") from exc
-            return _json(msgspec.structs.replace(cleaned, endpoints=portable.endpoints))
+            cleaned = msgspec.structs.replace(cleaned, endpoints=portable.endpoints)
+            if kind is AssetKind.variant:
+                try:
+                    variant_node(cleaned)
+                except ValueError as exc:
+                    raise InvalidRequestError(str(exc)) from exc
+            return _json(cleaned)
         component = msgspec.json.decode(encoded, type=ApplicationContent)
         if component.schema_version not in ("f8studio-component/1", COMPONENT_SCHEMA_VERSION):
             raise InvalidRequestError(f"unsupported component schema: {component.schema_version}")
@@ -225,7 +237,7 @@ def _validate_content(kind: AssetKind, content: F8JsonValue, *,
             document = msgspec.structs.replace(document, nodes=tuple(normalized))
         shared = project_document_for_sharing(document)
         return _json(ApplicationContent(nodes=shared.nodes, edges=shared.edges, layout=shared.layout))
-    if kind is AssetKind.variant:
+    if kind in (AssetKind.variant, AssetKind.preset):
         variant = msgspec.json.decode(encoded, type=VariantContent)
         if variant.schema_version != VARIANT_SCHEMA_VERSION:
             raise InvalidRequestError(f"unsupported variant schema: {variant.schema_version}")
@@ -303,6 +315,13 @@ class AssetRepository:
                     ON project_versions(project_id, created_at DESC);
                 """
             )
+            # Existing parameter-only variants remain readable as Presets, with all versions intact.
+            rows = connection.execute("""SELECT a.asset_id, v.content FROM local_assets a JOIN local_asset_versions v
+                ON v.asset_id = a.asset_id AND v.version = a.current_version WHERE a.kind = 'variant'""").fetchall()
+            for asset_id, payload in rows:
+                content: F8JsonValue = msgspec.json.decode(_bytes(payload), type=F8JsonValue)
+                if isinstance(content, dict) and content.get("schemaVersion") == VARIANT_SCHEMA_VERSION:
+                    connection.execute("UPDATE local_assets SET kind = 'preset' WHERE asset_id = ?", (_text(asset_id),))
 
     def list_assets(self, kind: AssetKind | None = None) -> tuple[AssetSummary, ...]:
         query = """SELECT asset_id, kind, name, description, tags, current_version, created_at, updated_at
@@ -316,12 +335,13 @@ class AssetRepository:
             rows = connection.execute(query, params).fetchall()
         return tuple(self._summary(row) for row in rows)
 
-    def create(self, request: CreateAssetRequest) -> AssetRecord:
+    def create(self, request: CreateAssetRequest, *, node_source: tuple[str, str] | None = None) -> AssetRecord:
         asset_id = ensure_token(request.asset_id or uuid4().hex, label="asset_id")
         name = request.name.strip()
         if not name:
             raise InvalidRequestError("asset name must be non-empty")
         content = _validate_content(request.kind, request.content, spec_resolver=self._spec_resolver)
+        kind = AssetKind.preset if request.kind is AssetKind.variant and isinstance(content, dict) and content.get("schemaVersion") == VARIANT_SCHEMA_VERSION else request.kind
         timestamp = _now()
         tags = _normalize_tags(request.tags)
         try:
@@ -331,13 +351,17 @@ class AssetRepository:
                     """INSERT INTO local_assets(
                            asset_id, kind, name, description, tags, current_version, created_at, updated_at
                        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-                    (asset_id, request.kind.value, name, request.description, msgspec.json.encode(tags), timestamp, timestamp),
+                    (asset_id, kind.value, name, request.description, msgspec.json.encode(tags), timestamp, timestamp),
                 )
                 connection.execute(
                     "INSERT INTO local_asset_versions(asset_id, version, created_at, content) VALUES (?, 1, ?, ?)",
                     (asset_id, timestamp, msgspec.json.encode(content)),
                 )
+                if node_source is not None:
+                    self._save_node_source(connection, node_source, asset_id, 1)
         except sqlite3.IntegrityError as exc:
+            if exc.sqlite_errorcode not in (sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY, sqlite3.SQLITE_CONSTRAINT_UNIQUE):
+                raise
             raise FileExistsError(f"asset already exists: {asset_id}") from exc
         return self.get(asset_id)
 
@@ -375,7 +399,7 @@ class AssetRepository:
             raise NotFoundError(f"asset not found: {asset_id}")
         return AssetKind(_text(row[0]))
 
-    def update(self, asset_id: str, request: UpdateAssetRequest) -> AssetRecord:
+    def update(self, asset_id: str, request: UpdateAssetRequest, *, node_source: tuple[str, str] | None = None) -> AssetRecord:
         asset_id = ensure_token(asset_id, label="asset_id")
         name = request.name.strip()
         if not name:
@@ -384,23 +408,57 @@ class AssetRepository:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
-                "SELECT kind, current_version FROM local_assets WHERE asset_id = ?",
+                """SELECT a.kind, a.current_version, v.content FROM local_assets a JOIN local_asset_versions v
+                   ON v.asset_id = a.asset_id AND v.version = a.current_version WHERE a.asset_id = ?""",
                 (asset_id,),
             ).fetchone()
             if current is None:
                 raise NotFoundError(f"asset not found: {asset_id}")
+            if request.expected_version is not None and request.expected_version != _integer(current[1]):
+                raise RevisionConflictError("asset changed before save; reload its latest version and retry")
+            if AssetKind(_text(current[0])) is AssetKind.variant and request.expected_version is None:
+                raise InvalidRequestError("saving a Variant requires expectedVersion")
             content = _validate_content(AssetKind(_text(current[0])), request.content, spec_resolver=self._spec_resolver)
-            version = _integer(current[1]) + 1
+            previous = _validate_content(AssetKind(_text(current[0])), msgspec.json.decode(_bytes(current[2]), type=F8JsonValue), spec_resolver=self._spec_resolver)
+            if AssetKind(_text(current[0])) is AssetKind.variant:
+                old_node = variant_node(decode_component(msgspec.json.encode(previous)))
+                new_node = variant_node(decode_component(msgspec.json.encode(content)))
+                old_operator = old_node.operator_class if isinstance(old_node, OperatorNode) else None
+                new_operator = new_node.operator_class if isinstance(new_node, OperatorNode) else None
+                if type(old_node) is not type(new_node) or old_node.service_class != new_node.service_class or old_operator != new_operator:
+                    raise InvalidRequestError("a Variant's service/operator class cannot change; save a new Variant instead")
+            changed = canonical_json_bytes(content) != canonical_json_bytes(previous)
+            version = _integer(current[1]) + int(changed)
             connection.execute(
                 """UPDATE local_assets SET name = ?, description = ?, tags = ?,
                        current_version = ?, updated_at = ? WHERE asset_id = ?""",
                 (name, request.description, msgspec.json.encode(_normalize_tags(request.tags)), version, timestamp, asset_id),
             )
-            connection.execute(
-                "INSERT INTO local_asset_versions(asset_id, version, created_at, content) VALUES (?, ?, ?, ?)",
-                (asset_id, version, timestamp, msgspec.json.encode(content)),
-            )
+            if changed:
+                connection.execute(
+                    "INSERT INTO local_asset_versions(asset_id, version, created_at, content) VALUES (?, ?, ?, ?)",
+                    (asset_id, version, timestamp, msgspec.json.encode(content)),
+                )
+            if node_source is not None:
+                self._save_node_source(connection, node_source, asset_id, version)
         return self.get(asset_id)
+
+    @staticmethod
+    def _save_node_source(connection: sqlite3.Connection, source: tuple[str, str], asset_id: str, version: int) -> None:
+        connection.execute("""INSERT INTO node_variants(project_id, node_id, asset_id, version) VALUES (?, ?, ?, ?)
+            ON CONFLICT(project_id, node_id) DO UPDATE SET asset_id = excluded.asset_id, version = excluded.version""",
+            (*source, asset_id, version))
+
+    def variant_catalog(self) -> tuple[VariantSummary, ...]:
+        summaries: list[VariantSummary] = []
+        for asset in self.list_assets(AssetKind.variant):
+            record = self.get(asset.asset_id)
+            node = variant_node(decode_component(msgspec.json.encode(record.content)))
+            summaries.append(VariantSummary(asset_id=asset.asset_id, name=asset.name, description=asset.description,
+                tags=asset.tags, current_version=asset.current_version,
+                node_kind="operator" if isinstance(node, OperatorNode) else "service", service_class=node.service_class,
+                operator_class=node.operator_class if isinstance(node, OperatorNode) else None))
+        return tuple(summaries)
 
     def delete(self, asset_id: str) -> None:
         asset_id = ensure_token(asset_id, label="asset_id")
@@ -445,6 +503,8 @@ class AssetRepository:
         if payload.schema_version != ASSET_SCHEMA_VERSION:
             raise InvalidRequestError(f"unsupported asset export schema: {payload.schema_version}")
         asset = payload.asset
+        if asset.kind is AssetKind.variant and isinstance(asset.content, dict) and asset.content.get("schemaVersion") == VARIANT_SCHEMA_VERSION:
+            asset = msgspec.structs.replace(asset, kind=AssetKind.preset)
         asset_id = ensure_token(asset.asset_id, label="asset_id")
         if not asset.name.strip():
             raise InvalidRequestError("asset name must be non-empty")

@@ -1,13 +1,19 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import type { StudioDocument } from '../api/contracts';
+import type { JsonValue, StudioDocument } from '../api/contracts';
 import type { ExcludedState } from '../api/contracts.gen';
 import { SettingsDialog } from './SchemaEditor';
 
-export function ShareStateDialog({ title, document, nodeIds, children, onClose, onShare }: {
+function valuePreview(value: JsonValue): string {
+  const text = JSON.stringify(value);
+  return text.length > 100 ? `${text.slice(0, 100)}…` : text;
+}
+
+export function ShareStateDialog({ title, document, nodeIds, children, disabled = false, onClose, onShare }: {
   readonly title: string;
   readonly document: StudioDocument;
   readonly nodeIds?: readonly string[];
   readonly children?: ReactNode;
+  readonly disabled?: boolean;
   readonly onClose: () => void;
   readonly onShare: (excluded: readonly ExcludedState[]) => Promise<void>;
 }) {
@@ -35,7 +41,7 @@ export function ShareStateDialog({ title, document, nodeIds, children, onClose, 
   };
   return <SettingsDialog title={title} onClose={close}>
     {children}
-    <p>Select saved values to include. Field definitions and their defaults stay in the export.</p>
+    <p>Select saved configuration values to include. Unchanged fields use their defaults, which are included in the node definition.</p>
     {document.nodes.filter((node) => selected === null || selected.has(node.nodeId)).map((node) => <fieldset key={node.nodeId}>
       <legend>{node.name}</legend>
       {(node.spec.stateFields ?? []).map((field) => {
@@ -43,21 +49,25 @@ export function ShareStateDialog({ title, document, nodeIds, children, onClose, 
         const driven = enabled(node.nodeId) && document.edges.some((edge) => edge.kind === 'state' &&
           edge.toNodeId === node.nodeId && edge.toPortId === input?.portId && enabled(edge.fromNodeId) &&
           (selected === null || selected.has(edge.fromNodeId)));
-        const reason = field.access === 'ro' ? 'Read only' : field.persistent === false ? 'Runtime only' :
-          field.publishable === false || field.redactOnPublish === true ? 'Private value' : driven ? 'Supplied by upstream node' :
-          !(field.name in node.stateValues) ? 'No saved value' : null;
+        const hasSavedValue = Object.hasOwn(node.stateValues, field.name);
+        const defaultValue = field.valueSchema.default;
+        const usesDefault = !hasSavedValue && defaultValue !== undefined;
+        const reason = field.access === 'ro' ? 'Read-only output · not saved' : field.persistent === false ? 'Runtime only · not saved' :
+          field.publishable === false || field.redactOnPublish === true ? 'Local only · not published' : driven ? 'Supplied by upstream node' :
+          !hasSavedValue && !usesDefault ? 'No configured value or default' : null;
         const omitted = excluded.some((item) => item.nodeId === node.nodeId && item.field === field.name);
         return <label className="schema-dialog-check" key={field.name}>
-          <input type="checkbox" aria-label={`${node.name}.${field.name}`} checked={reason === null && !omitted}
-            disabled={pending || reason !== null} onChange={(event) => setExcluded((previous) => event.target.checked
+          <input type="checkbox" aria-label={`${node.name}.${field.name}`} checked={reason === null && (usesDefault || !omitted)}
+            disabled={pending || reason !== null || usesDefault} onChange={(event) => setExcluded((previous) => event.target.checked
               ? previous.filter((item) => item.nodeId !== node.nodeId || item.field !== field.name)
               : [...previous, { nodeId: node.nodeId, field: field.name }])} />
-          {field.label ?? field.name}{reason !== null && <small> · {reason}</small>}
+          {field.label ?? field.name}{reason !== null ? <small> · {reason}</small> :
+            usesDefault && <small> · Default: {valuePreview(defaultValue)} · included in definition</small>}
         </label>;
       })}
     </fieldset>)}
     {error !== null && <p role="alert">{error}</p>}
-    <button type="button" className="command-button primary" disabled={pending} onClick={() => void share()}>
+    <button type="button" className="command-button primary" disabled={pending || disabled} onClick={() => void share()}>
       {pending ? 'Exporting…' : title}
     </button>
   </SettingsDialog>;

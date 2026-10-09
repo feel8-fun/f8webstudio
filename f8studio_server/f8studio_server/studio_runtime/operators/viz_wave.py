@@ -251,6 +251,8 @@ def register_spec(registry: Registry) -> Registry:
                 ),
                 F8StateSpec(
                     name="clearNonce",
+                    persistent=False,
+                    publishable=False,
                     label="Clear Nonce",
                     description="Increment to clear accumulated series buffer.",
                     valueSchema=integer_schema(default=0, minimum=0, maximum=2147483647),

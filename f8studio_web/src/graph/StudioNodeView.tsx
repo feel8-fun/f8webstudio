@@ -12,7 +12,7 @@ import { hasExtensionNodeRendererClass } from '../extensions/registry';
 import { SkeletonOutputPreview } from '../three/SkeletonOutputPreview';
 import { isPatchHub } from './portRows';
 import { SERVICE_MIN_HEIGHT, SERVICE_WIDTH, type StudioFlowNode } from './projection';
-import { StateFieldControl, stateOptionPoolField } from './StateFieldControl';
+import { displayedStateValue, StateFieldControl, stateOptionPoolField } from './StateFieldControl';
 import { useRuntimeNodeState } from './useRuntimeNodeState';
 import { StudioNodeSurface } from './StudioNodeSurface';
 import { isResizableOperator, operatorMinimumSize } from './nodePresentation';
@@ -107,8 +107,10 @@ export function StudioNodeView({ data, selected }: NodeProps<StudioFlowNode>) {
     .flatMap((field) => [field.name, stateOptionPoolField(field)].filter((name): name is string => name !== null));
   const runtimeValues = useRuntimeNodeState(node, inlineNames);
   if (isPatchHub(node)) return <StudioNodeSurface node={node} selected={selected} childCount={data.childCount} />;
-  const updatesEnabled = runtimeValues.uiUpdate?.found === true
-    ? runtimeValues.uiUpdate.value !== false : node.stateValues.uiUpdate !== false;
+  const updateField = node.spec.stateFields?.find((field) => field.name === 'uiUpdate');
+  const updatesEnabled = updateField === undefined ? node.stateValues.uiUpdate !== false :
+    displayedStateValue(node, updateField, runtimeValues.uiUpdate,
+      interaction?.connectedStateInputs.has(`${node.nodeId}:uiUpdate`)) !== false;
   const stateControls: Record<string, ReactNode> = {};
   const commandControls: Record<string, ReactNode> = {};
   if (interaction !== null) {

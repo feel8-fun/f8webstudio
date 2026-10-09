@@ -27,7 +27,7 @@ beforeEach(() => {
     'fetch',
     vi.fn().mockImplementation((input: string | URL | Request) => {
       const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : new URL(input.url).pathname;
-      if (path === '/api/projects' || path === '/api/presentation' || path === '/api/extension-tools' || path === '/api/tool-jobs' || path === '/api/extensions' || path === '/api/environments') return Promise.resolve(new Response('[]', { status: 200 }));
+      if (path === '/api/projects' || path === '/api/variants' || path === '/api/presentation' || path === '/api/extension-tools' || path === '/api/tool-jobs' || path === '/api/extensions' || path === '/api/environments') return Promise.resolve(new Response('[]', { status: 200 }));
       if (path === '/api/environments/storage') return Promise.resolve(new Response(JSON.stringify(storage), { status: 200 }));
       if (path === '/api/catalog') return Promise.resolve(new Response('{"services":[],"operators":[]}', { status: 200 }));
       return Promise.resolve(new Response(

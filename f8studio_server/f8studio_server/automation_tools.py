@@ -8,18 +8,21 @@ import msgspec
 from f8pysdk.specs import F8JsonValue, F8StateAccess, state_is_persistent
 from f8studio_core.graph import HistoryRequest, PatchRequest, PatchResult, RevisionConflictError, SetNodeStateOp, StudioDocument
 from f8studio_core.graph.spec_edit import validate_spec_snapshot
-from f8studio_core.graph.models import OperatorNode
+from f8studio_core.graph.models import OperatorNode, ServiceNode
+from f8studio_core.graph.runtime_hosts import STUDIO_SERVICE_CLASS, STUDIO_SERVICE_ID
 from f8studio_core.publication import capture_component, component_document, decode_component
 from f8studio_core.publication.insertion import prepare_component_insertion
 
 from .catalog import CatalogService, CatalogSnapshot
 from .jobs import DeployCoordinator
-from .models import DeployJob, DeployProjectRequest, ProjectRecord, ProjectSummary
+from .models import CreateCatalogNodeRequest, DeployJob, DeployProjectRequest, ProjectRecord, ProjectSummary
 from .monitors import RuntimeMonitorStore
 from .projects import ProjectService
 from .runtime import RuntimeGateway
 from .project_commits import ProjectCommits
-from .assets import AssetKind, AssetRecord, AssetRepository, CaptureComponentRequest, CreateAssetRequest
+from .assets import AssetKind, AssetRecord, AssetRepository, CaptureComponentRequest, CreateAssetRequest, UpdateAssetRequest
+from .variant_models import CaptureVariantRequest
+from .variants import capture_variant, variant_node
 from .component_models import ComponentPreview, ComponentPreviewIssue, ComponentSource, InsertComponentRequest, InsertComponentResult
 from .errors import InvalidRequestError
 
@@ -62,9 +65,36 @@ class StudioAutomationTools:
             raise InvalidRequestError(f"cannot capture component: {exc}") from exc
         return self._assets.create(CreateAssetRequest(kind=AssetKind.component, name=request.name, content=_json_value(component)))
 
+    def capture_variant(self, project_id: str, request: CaptureVariantRequest) -> AssetRecord:
+        document = self._projects.document(project_id)
+        if (document.graph_revision, document.layout_revision) != (request.expected_graph_revision, request.expected_layout_revision):
+            raise RevisionConflictError("project changed before Variant capture; refresh and retry")
+        if (request.asset_id is None) != (request.expected_version is None):
+            raise InvalidRequestError("updating a Variant requires assetId and expectedVersion together")
+        try:
+            template = capture_variant(document, request.node_id, request.excluded_states)
+        except ValueError as exc:
+            raise InvalidRequestError(f"cannot save Variant: {exc}") from exc
+        content = _json_value(template)
+        source = (project_id, request.node_id)
+        if request.asset_id is None:
+            return self._assets.create(CreateAssetRequest(kind=AssetKind.variant, name=request.name, description=request.description,
+                tags=request.tags, content=content), node_source=source)
+        existing = self._assets.get(request.asset_id)
+        if existing.kind is not AssetKind.variant:
+            raise InvalidRequestError("update target must be a node Variant")
+        previous = variant_node(decode_component(msgspec.json.encode(existing.content)))
+        captured = variant_node(template)
+        previous_operator = previous.operator_class if isinstance(previous, OperatorNode) else None
+        captured_operator = captured.operator_class if isinstance(captured, OperatorNode) else None
+        if type(previous) is not type(captured) or previous.service_class != captured.service_class or previous_operator != captured_operator:
+            raise InvalidRequestError("a Variant's service/operator class cannot change; save a new Variant instead")
+        return self._assets.update(existing.asset_id, UpdateAssetRequest(name=request.name, description=request.description,
+            tags=request.tags, content=content, expected_version=request.expected_version), node_source=source)
+
     def component_preview(self, asset_id: str, version: int) -> ComponentPreview:
-        if self._assets.kind(asset_id) is not AssetKind.component:
-            raise InvalidRequestError("asset must be a component")
+        if self._assets.kind(asset_id) not in (AssetKind.component, AssetKind.variant):
+            raise InvalidRequestError("asset must be a Component or node Variant")
         content = self._assets.version(asset_id, version).content
         try:
             component = decode_component(msgspec.json.encode(content))
@@ -94,11 +124,25 @@ class StudioAutomationTools:
         document = self._projects.document(project_id)
         if (document.graph_revision, document.layout_revision) != (request.expected_graph_revision, request.expected_layout_revision):
             raise RevisionConflictError("project changed before component insertion; refresh and retry")
+        asset = self._assets.get(request.asset_id)
+        builtin_host: ServiceNode | None = None
+        if asset.kind is AssetKind.variant and any(binding.service_class == STUDIO_SERVICE_CLASS for binding in preview.component.host_bindings):
+            if not any(isinstance(node, ServiceNode) and node.service_id == STUDIO_SERVICE_ID for node in document.nodes):
+                host = self._catalog.create_node(CreateCatalogNodeRequest(kind="service", node_id=STUDIO_SERVICE_ID, service_class=STUDIO_SERVICE_CLASS))
+                if not isinstance(host, ServiceNode):
+                    raise TypeError("builtin Studio descriptor must create a service")
+                builtin_host = host
+                document = msgspec.structs.replace(document, nodes=(*document.nodes, host))
         try:
             insertion = prepare_component_insertion(preview.component, document, request_id=request.request_id,
                 host_bindings=request.host_bindings, x=request.x, y=request.y)
         except ValueError as exc:
             raise InvalidRequestError(f"cannot insert component: {exc}") from exc
+        if asset.kind is AssetKind.variant:
+            variant_nodes = tuple(msgspec.structs.replace(node, name=asset.name) for node in insertion.fragment.nodes)
+            if builtin_host is not None:
+                variant_nodes = (builtin_host, *variant_nodes)
+            insertion = msgspec.structs.replace(insertion, fragment=msgspec.structs.replace(insertion.fragment, nodes=variant_nodes))
         source = ComponentSource(asset_id=request.asset_id, version=request.version, node_map=insertion.node_map,
             edge_map=insertion.edge_map, host_bindings=insertion.host_bindings, endpoints=insertion.endpoints)
         patch = PatchRequest(request_id=request.request_id, expected_graph_revision=request.expected_graph_revision,

@@ -40,6 +40,44 @@ test('failed sharing leaves the choices available and displays the error', async
   expect(close).not.toHaveBeenCalled();
 });
 
+test('unchanged configuration is included through definition defaults, including false, zero, empty and null', async () => {
+  const fields = [
+    { name: 'tickMs', label: 'Tick (ms)', access: 'rw' as const, persistent: true, publishable: true, valueSchema: { type: 'integer' as const, default: 100 } },
+    { name: 'hiResTimer', access: 'rw' as const, persistent: true, publishable: true, valueSchema: { type: 'boolean' as const, default: false } },
+    { name: 'offset', access: 'rw' as const, valueSchema: { type: 'integer' as const, default: 0 } },
+    { name: 'prefix', access: 'rw' as const, valueSchema: { type: 'string' as const, default: '' } },
+    { name: 'optional', access: 'rw' as const, valueSchema: { type: 'null' as const, default: null } },
+    { name: 'unset', access: 'rw' as const, valueSchema: { type: 'string' as const } },
+  ];
+  const original = document.nodes[0]!;
+  if (original.kind !== 'service') throw new Error('Expected service fixture');
+  const node = { ...original, stateValues: {}, spec: { ...original.spec, stateFields: fields } };
+  const share = vi.fn().mockResolvedValue(undefined);
+  render(<ShareStateDialog title="Save as Variant" document={{ ...document, nodes: [node] }} onShare={share} onClose={vi.fn()} />);
+  for (const name of ['tickMs', 'hiResTimer', 'offset', 'prefix', 'optional']) {
+    expect(screen.getByRole('checkbox', { name: `Player.${name}` })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: `Player.${name}` })).toBeDisabled();
+  }
+  expect(screen.getByText(/Default: 100 · included in definition/)).toBeVisible();
+  expect(screen.getByText(/Default: false · included in definition/)).toBeVisible();
+  expect(screen.getByRole('checkbox', { name: 'Player.unset' })).not.toBeChecked();
+  expect(screen.getByText(/No configured value or default/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Save as Variant' }));
+  await waitFor(() => expect(share).toHaveBeenCalledWith([]));
+});
+
+test('an explicitly saved value equal to the default can still be excluded', async () => {
+  const node = { ...document.nodes[0]!, stateValues: { gain: 1 } };
+  const share = vi.fn().mockResolvedValue(undefined);
+  render(<ShareStateDialog title="Save as Variant" document={{ ...document, nodes: [node] }} onShare={share} onClose={vi.fn()} />);
+  const gain = screen.getByRole('checkbox', { name: 'Player.gain' });
+  expect(gain).toBeEnabled();
+  expect(gain).toBeChecked();
+  fireEvent.click(gain);
+  fireEvent.click(screen.getByRole('button', { name: 'Save as Variant' }));
+  await waitFor(() => expect(share).toHaveBeenCalledWith([{ nodeId: 'player', field: 'gain' }]));
+});
+
 test('selection capture treats a cut upstream edge as an authored fallback and omits unselected nodes', () => {
   const source = { ...document.nodes[0]!, nodeId: 'source', serviceId: 'source', name: 'Source' };
   const target = { ...document.nodes[0]!, ports: [{ portId: 'gain-in', name: 'gain', runtimeName: 'gain',

@@ -53,7 +53,7 @@ test('renders live retained values for readonly state without a null placeholder
   expect(screen.queryByText('null')).not.toBeInTheDocument();
 });
 
-test('shows a writable runtime value and preserves an active text edit', () => {
+test('shows saved writable configuration despite retained runtime values and preserves an active text edit', () => {
   const urlField: StateSpec = {
     name: 'mediaUrl', label: 'Media URL', access: 'rw', valueSchema: { type: 'string', default: '' },
   };
@@ -63,13 +63,42 @@ test('shows a writable runtime value and preserves an active text edit', () => {
   };
   const view = render(<StateFieldControl {...props} runtimeValue={{ field: 'mediaUrl', found: true, value: 'player.mp4', tsMs: 1 }} />);
   const input = screen.getByRole('textbox', { name: 'Media URL' });
-  expect(input).toHaveValue('player.mp4');
+  expect(input).toHaveValue('draft.mp4');
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value: 'typing.mp4' } });
   view.rerender(<StateFieldControl {...props} runtimeValue={{ field: 'mediaUrl', found: true, value: 'other.mp4', tsMs: 2 }} />);
   expect(input).toHaveValue('typing.mp4');
   fireEvent.blur(input);
   expect(props.onCommit).toHaveBeenCalledWith('typing.mp4');
+});
+
+test('a stale runtime value cannot hide a saved edit or prevent saving a value matching the cache', () => {
+  const field: StateSpec = { name: 'tickMs', label: 'Tick (ms)', access: 'rw', persistent: true,
+    publishable: true, valueSchema: { type: 'integer', default: 100 } };
+  const commit = vi.fn();
+  const props = { field, disabled: false, onCommit: commit,
+    runtimeValue: { field: 'tickMs', found: true, value: 100, tsMs: 1 } };
+  const view = render(<StateFieldControl {...props} node={{ ...node, stateValues: { tickMs: 250 } }} />);
+  const input = screen.getByRole('spinbutton', { name: 'Tick (ms)' });
+  expect(input).toHaveValue(250);
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: '100' } });
+  fireEvent.blur(input);
+  expect(commit).toHaveBeenCalledWith(100);
+  view.rerender(<StateFieldControl {...props} node={{ ...node, stateValues: { tickMs: 100 } }} />);
+  expect(input).toHaveValue(100);
+});
+
+test('runtime-only writable state and upstream-driven state still display live values', () => {
+  const field: StateSpec = { name: 'value', label: 'Value', access: 'rw', persistent: false,
+    valueSchema: { type: 'integer', default: 0 } };
+  const props = { node: { ...node, stateValues: { value: 1 } }, field, disabled: false, onCommit: vi.fn() };
+  const view = render(<StateFieldControl {...props} runtimeValue={{ field: 'value', found: true, value: 5, tsMs: 1 }} />);
+  expect(screen.getByRole('spinbutton', { name: 'Value' })).toHaveValue(5);
+  view.rerender(<StateFieldControl {...props} field={{ ...field, persistent: true }} connected
+    runtimeValue={{ field: 'value', found: true, value: 8, tsMs: 2 }} />);
+  expect(screen.getByRole('spinbutton', { name: 'Value' })).toHaveValue(8);
+  expect(screen.getByRole('spinbutton', { name: 'Value' })).toHaveAttribute('readonly');
 });
 
 test('labels missing readonly runtime state as unavailable', () => {

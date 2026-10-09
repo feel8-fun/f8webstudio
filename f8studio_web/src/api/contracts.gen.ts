@@ -341,9 +341,9 @@ export type AssetExportInput = {
   readonly "versions": ReadonlyArray<AssetVersionInput>;
 };
 
-export type AssetKind = "component" | "modding_recipe" | "variant";
+export type AssetKind = "component" | "modding_recipe" | "preset" | "variant";
 
-export type AssetKindInput = "component" | "modding_recipe" | "variant";
+export type AssetKindInput = "component" | "modding_recipe" | "preset" | "variant";
 
 export type AssetRecord = {
   readonly "assetId": string;
@@ -523,6 +523,30 @@ export type CaptureComponentRequestInput = {
   readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
   readonly "name"?: string;
   readonly "nodeIds"?: ReadonlyArray<string> | null;
+};
+
+export type CaptureVariantRequest = {
+  readonly "nodeId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "excludedStates": ReadonlyArray<ExcludedState>;
+  readonly "assetId": string | null;
+  readonly "expectedVersion": number | null;
+};
+
+export type CaptureVariantRequestInput = {
+  readonly "nodeId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "name": string;
+  readonly "description"?: string;
+  readonly "tags"?: ReadonlyArray<string>;
+  readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
+  readonly "assetId"?: string | null;
+  readonly "expectedVersion"?: number | null;
 };
 
 export type CatalogSnapshot = {
@@ -4376,6 +4400,7 @@ export type UpdateAssetRequest = {
   readonly "content": JsonValue;
   readonly "description": string;
   readonly "tags": ReadonlyArray<string>;
+  readonly "expectedVersion": number | null;
 };
 
 export type UpdateAssetRequestInput = {
@@ -4383,6 +4408,7 @@ export type UpdateAssetRequestInput = {
   readonly "content": JsonValue;
   readonly "description"?: string;
   readonly "tags"?: ReadonlyArray<string>;
+  readonly "expectedVersion"?: number | null;
 };
 
 export type UpdateEditorDocumentRequest = {
@@ -4443,6 +4469,40 @@ export type ValidationResponseInput = {
   readonly "valid": boolean;
   readonly "graphRevision": number;
   readonly "layoutRevision": number;
+};
+
+export type VariantSource = {
+  readonly "nodeId": string;
+  readonly "assetId": string;
+  readonly "version": number;
+};
+
+export type VariantSourceInput = {
+  readonly "nodeId": string;
+  readonly "assetId": string;
+  readonly "version": number;
+};
+
+export type VariantSummary = {
+  readonly "assetId": string;
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "currentVersion": number;
+  readonly "nodeKind": "operator" | "service";
+  readonly "serviceClass": string;
+  readonly "operatorClass": string | null;
+};
+
+export type VariantSummaryInput = {
+  readonly "assetId": string;
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "currentVersion": number;
+  readonly "nodeKind": "operator" | "service";
+  readonly "serviceClass": string;
+  readonly "operatorClass"?: string | null;
 };
 
 export type VideoConfig = {
@@ -4517,6 +4577,7 @@ export interface ApiRequests {
   readonly "PUT /api/environments/storage": RuntimeStorageRequestInput;
   readonly "PUT /api/extensions/{extension_id}/enabled": ExtensionToggleRequestInput;
   readonly "POST /api/catalog/nodes": CreateCatalogNodeRequestInput;
+  readonly "POST /api/projects/{project_id}/variants": CaptureVariantRequestInput;
   readonly "POST /api/assets": CreateAssetRequestInput;
   readonly "POST /api/assets/import": AssetExportInput;
   readonly "PUT /api/assets/{asset_id}": UpdateAssetRequestInput;
@@ -4609,6 +4670,9 @@ export interface ApiResponses {
   readonly "POST /api/catalog/refresh": CatalogSnapshot;
   readonly "POST /api/catalog/nodes": ServiceNode | OperatorNode;
   readonly "GET /api/assets": ReadonlyArray<AssetSummary>;
+  readonly "GET /api/variants": ReadonlyArray<VariantSummary>;
+  readonly "GET /api/projects/{project_id}/variants": ReadonlyArray<VariantSource>;
+  readonly "POST /api/projects/{project_id}/variants": AssetRecord;
   readonly "POST /api/assets": AssetRecord;
   readonly "POST /api/assets/import": AssetRecord;
   readonly "GET /api/assets/{asset_id}": AssetRecord;

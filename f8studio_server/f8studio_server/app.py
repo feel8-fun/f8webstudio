@@ -511,6 +511,23 @@ def create_app(
         payload = await _decode_body(request, CaptureComponentRequest)
         return _json_value(await asyncio.to_thread(studio.tools.capture_component, project_id, payload))
 
+    @app.get("/api/variants")
+    async def list_variants() -> F8JsonValue:
+        return _json_value(await asyncio.to_thread(studio.assets.variant_catalog))
+
+    @app.get("/api/projects/{project_id}/variants")
+    async def project_variant_sources(project_id: str) -> F8JsonValue:
+        return _json_value(await asyncio.to_thread(studio.projects.variant_sources, project_id))
+
+    @app.post("/api/projects/{project_id}/variants", status_code=201)
+    async def capture_project_variant(project_id: str, request: Request) -> F8JsonValue:
+        from .variant_models import CaptureVariantRequest
+        payload = await _decode_body(request, CaptureVariantRequest)
+        record = await asyncio.to_thread(studio.tools.capture_variant, project_id, payload)
+        await studio.events.publish(event_type="asset.updated" if payload.asset_id else "asset.created",
+            scope=f"asset:{record.asset_id}", payload=_json_value(record))
+        return _json_value(record)
+
     @app.get("/api/assets/{asset_id}/versions/{version}/preview")
     async def preview_component(asset_id: str, version: int) -> F8JsonValue:
         return _json_value(await asyncio.to_thread(studio.tools.component_preview, asset_id, version))

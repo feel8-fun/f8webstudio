@@ -271,6 +271,19 @@ export async function fetchProject(projectId: string, signal?: AbortSignal): Pro
   return body;
 }
 
+export async function fetchVariants(signal?: AbortSignal): Promise<readonly Wire.VariantSummary[]> {
+  return await requestJson('/api/variants', { signal }) as readonly Wire.VariantSummary[];
+}
+
+export async function fetchVariantSources(projectId: string, signal?: AbortSignal): Promise<readonly Wire.VariantSource[]> {
+  return await requestJson(`/api/projects/${encodeURIComponent(projectId)}/variants`, { signal }) as readonly Wire.VariantSource[];
+}
+
+export async function captureProjectVariant(projectId: string, input: Wire.CaptureVariantRequestInput): Promise<AssetRecord> {
+  return await requestJson(`/api/projects/${encodeURIComponent(projectId)}/variants`,
+    jsonRequest('POST /api/projects/{project_id}/variants', input)) as AssetRecord;
+}
+
 export async function exportProjectGraph(projectId: string): Promise<string> {
   const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/graph/export`);
   if (!isObject(body) || body.format !== 'f8graph' || body.formatVersion !== 4) {

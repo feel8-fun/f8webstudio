@@ -1,4 +1,7 @@
 import { ShareStateDialog } from "../graph/ShareStateDialog";
+import { CloudAccount } from '../library/CloudAccount';
+import { CloudBrowser } from '../library/CloudBrowser';
+import { PublishPanel } from '../library/PublishPanel';
 import type { ExcludedState } from "../api/contracts.gen";
 import { Box, Camera, Download, Plus, Save, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -223,6 +226,7 @@ export function AssetsWorkspace() {
   return (
     <section className="assets-workspace" aria-label="Assets and versions">
       <aside className="asset-browser">
+        <CloudAccount/>
         <div className="pane-heading">Local assets</div>
         <div className="asset-actions">
           <button className="command-button" type="button" onClick={() => void addAsset('component')}><Plus size={14} />Component</button>
@@ -246,6 +250,8 @@ export function AssetsWorkspace() {
         </div>
       </aside>
       <div className="asset-editor">
+        {projectRecord&&<PublishPanel key={`graph:${projectRecord.projectId}`} project={projectRecord}/>}
+        <CloudBrowser project={projectRecord} onDraft={async(assetId)=>{await reload();await selectAsset(assetId);}} onInserted={async()=>{if(projectId)setProjectRecord(await fetchProject(projectId));}}/>
         {selected === null ? <div className="empty-state centered">Select or create an asset</div> : <>
           <div className="tool-strip">
             <input className="plain-input asset-name" value={name} onChange={(event) => setName(event.target.value)} aria-label="Asset name" />
@@ -258,6 +264,7 @@ export function AssetsWorkspace() {
               (preview === null || preview.component.presentation.nodeOrder.length === 0 || preview.issues.length > 0 || preview.component.hostBindings.some((binding) => !hostBindings[binding.bindingId])))} onClick={() => void applyAsset()}>Apply</button>
           </div>
           <label className="field-stack">Description<input className="plain-input" value={description} onChange={(event) => setDescription(event.target.value)} /></label>
+          {(selected.kind==='component'||selected.kind==='variant')&&<PublishPanel key={selected.assetId} asset={selected}/>}
           {preview !== null && <section aria-label="Component preview">
             <GraphView document={preview.document} readonly />
             {preview.issues.map((issue, index) => <p role="alert" key={`${issue.nodeId}:${index}`}>{issue.message}</p>)}

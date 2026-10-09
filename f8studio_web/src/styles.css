@@ -1182,3 +1182,15 @@ button:disabled { cursor: default; }
 .port-context-popup button:hover, .port-context-popup button:focus-visible { background: #2d4255; }
 .port-context-popup button:disabled { opacity: .4; cursor: default; }
 .port-context-popup pre { max-height: 260px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.cloud-account,.cloud-publish { padding: 10px; border-bottom: 1px solid #2d333c; }
+.cloud-account summary,.cloud-publish summary { cursor:pointer; }
+.cloud-browser { padding:12px; border-bottom:1px solid #2d333c; font-size:12px; }
+.cloud-browser-columns { display:grid; grid-template-columns:minmax(200px,1fr) minmax(300px,2fr); gap:12px; align-items:start; }
+.cloud-browser .asset-list { max-height:420px; overflow:auto; align-content:start; margin-top:0; }
+.cloud-browser .asset-list > button { grid-template-columns:minmax(0,1fr); }
+.cloud-browser .asset-actions { margin:8px 0; gap:6px; flex-wrap:wrap; }
+.cloud-browser .asset-actions > input { flex:1; min-width:180px; }
+.asset-editor:has(.cloud-browser) { display:block; overflow:auto; }
+.asset-editor:has(.cloud-browser) .asset-json { min-height:300px; }
+.cloud-details { min-width:0; }
+.cloud-details .template-insertion { max-height:700px; }

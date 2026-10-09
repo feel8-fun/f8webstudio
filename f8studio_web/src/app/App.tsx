@@ -5,6 +5,7 @@ import { fetchHealth } from '../api/client';
 import { AgentSettingsButton } from '../agents/AgentSettings';
 import type { HealthStatus } from '../api/contracts';
 import { GraphWorkspace } from '../graph/GraphWorkspace';
+import { CloudProvider } from '../library/CloudContext';
 import { LogsWorkspace } from '../logs/LogsWorkspace';
 import { PresentationProvider } from '../presentation/PresentationStore';
 import { GraphLogDock } from './GraphLogDock';
@@ -113,7 +114,7 @@ export function App() {
         : 'Server unavailable';
 
   return (
-    <PresentationProvider><main className={`studio-shell${view === 'code-state' || view === 'agent' ? ' studio-shell-code-state' : ''}`}>
+    <CloudProvider><PresentationProvider><main className={`studio-shell${view === 'code-state' || view === 'agent' ? ' studio-shell-code-state' : ''}`}>
       <header className="topbar">
         <div className="topbar-identity">
           <div className="brand">Feel8 Studio</div>
@@ -153,6 +154,6 @@ export function App() {
           {connection.kind === 'offline' && <div className="connection-error">{connection.message}</div>}
         </div>
       </section>
-    </main></PresentationProvider>
+    </main></PresentationProvider></CloudProvider>
   );
 }

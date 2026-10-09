@@ -15,7 +15,8 @@ from f8studio_core.graph.exchange import GraphExchange
 from f8studio_core.publication import PublicationCapabilities
 from f8media_protocol import models as media
 from . import assets, editor, local_integration as local, models
-from .component_models import ComponentPreview, InsertComponentRequest, InsertComponentResult
+from .component_models import ComponentPreview, InsertComponentRequest, InsertComponentResult, CloudReference, InsertCloudComponentRequest
+from . import cloud_models as cloud
 from .variant_models import CaptureVariantRequest, VariantSource, VariantSummary
 from .agents import models as agents, provider_settings as settings
 from .agents.provider_probe import ProviderProbeResult
@@ -74,6 +75,28 @@ class ValidationResponse(msgspec.Struct, frozen=True, rename="camel"):
 
 
 ROUTES = MANAGEMENT_ROUTES + (
+    RouteContract("get", "/api/cloud/status", None, cloud.CloudStatus, 200),
+    RouteContract("put", "/api/cloud/settings", cloud.CloudSettingsRequest, cloud.CloudStatus, 200),
+    RouteContract("post", "/api/cloud/auth/start", None, cloud.CloudLoginStart, 200),
+    RouteContract("get", "/api/cloud/auth/callback", None, None, 200, response_media_type="text/html"),
+    RouteContract("post", "/api/cloud/auth/logout", None, cloud.CloudStatus, 200),
+    RouteContract("get", "/api/cloud/library", None, cloud.CloudPage, 200),
+    RouteContract("get", "/api/cloud/library/{asset_id}", None, cloud.CloudAsset, 200),
+    RouteContract("get", "/api/cloud/library/{asset_id}/versions", None, tuple[cloud.CloudVersion,...], 200),
+    RouteContract("post", "/api/cloud/templates:preview", CloudReference, ComponentPreview, 200),
+    RouteContract("post", "/api/cloud/graphs:preview", CloudReference, cloud.CloudGraphPreview, 200),
+    RouteContract("post", "/api/cloud/graphs:open", cloud.CloudGraphOpenRequest, models.ProjectRecord, 200),
+    RouteContract("post", "/api/projects/{project_id}/cloud:insert", InsertCloudComponentRequest, InsertComponentResult, 200),
+    RouteContract("post", "/api/cloud/drafts", CloudReference, assets.AssetRecord, 200),
+    RouteContract("get", "/api/assets/{asset_id}/cloud", None, cloud.CloudDraftLink | None, 200),
+    RouteContract("get", "/api/projects/{project_id}/cloud", None, cloud.CloudDraftLink | None, 200),
+    RouteContract("post", "/api/assets/{asset_id}/cloud:publish", cloud.CloudPublishRequest, cloud.CloudPublicationResult, 200),
+    RouteContract("put", "/api/assets/{asset_id}/cloud:metadata", cloud.CloudMetadataRequest, cloud.CloudAsset, 200),
+    RouteContract("put", "/api/projects/{project_id}/cloud:metadata", cloud.CloudMetadataRequest, cloud.CloudAsset, 200),
+    RouteContract("post", "/api/projects/{project_id}/cloud:publish", cloud.CloudGraphPublishRequest, cloud.CloudPublicationResult, 200),
+    RouteContract("get", "/api/cloud/library/{asset_id}/relations", None, cloud.CloudRelations, 200),
+    RouteContract("put", "/api/cloud/library/{asset_id}/relations/{action}", None, cloud.CloudRelations, 200),
+    RouteContract("delete", "/api/cloud/library/{asset_id}/relations/{action}", None, cloud.CloudRelations, 200),
     RouteContract("get", "/api/health", None, HealthStatus, 200),
     RouteContract("get", "/api/logs", None, tuple[EventEnvelope, ...], 200),
     RouteContract("get", "/api/capabilities", None, CapabilitiesResponse, 200),

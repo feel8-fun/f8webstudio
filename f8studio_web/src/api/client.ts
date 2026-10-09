@@ -67,7 +67,7 @@ export class ApiError extends Error {
   }
 }
 
-async function requestJson(path: string, init?: RequestInit, ignoreNotFound = false): Promise<unknown> {
+export async function requestJson(path: string, init?: RequestInit, ignoreNotFound = false): Promise<unknown> {
   const response = await fetch(path, init);
   if (ignoreNotFound && response.status === 404) return null;
   if (response.status === 204) return null;
@@ -82,6 +82,7 @@ async function requestJson(path: string, init?: RequestInit, ignoreNotFound = fa
     let code: string | null = null;
     const detail = isObject(body) && 'detail' in body ? body.detail : body;
     if (isObject(body) && typeof body.message === 'string') message = body.message;
+    if (isObject(body) && typeof body.code === 'string') code = body.code;
     if (typeof detail === 'string') message = detail;
     if (Array.isArray(detail)) {
       message = detail.map((entry: unknown) => isObject(entry) && typeof entry.msg === 'string'

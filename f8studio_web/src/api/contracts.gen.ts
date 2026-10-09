@@ -589,6 +589,230 @@ export type ChoiceQuestionInput = {
   readonly "criteria": Readonly<Record<string, string | Readonly<Record<string, JsonValue>> | ReadonlyArray<JsonValue> | null>>;
 };
 
+export type CloudAsset = {
+  readonly "assetId": string;
+  readonly "kind": "component" | "graph" | "variant";
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "visibility": "private" | "public";
+  readonly "version": number;
+  readonly "contentHash": string;
+  readonly "license": string;
+  readonly "author": CloudUser;
+  readonly "updatedAt": string;
+};
+
+export type CloudAssetInput = {
+  readonly "assetId": string;
+  readonly "kind": "component" | "graph" | "variant";
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "visibility": "private" | "public";
+  readonly "version": number;
+  readonly "contentHash": string;
+  readonly "license": string;
+  readonly "author": CloudUserInput;
+  readonly "updatedAt": string;
+};
+
+export type CloudDraftLink = {
+  readonly "localAssetId": string;
+  readonly "reference": CloudReference;
+  readonly "owned": boolean;
+  readonly "authorId": string;
+  readonly "source": PublicationSource;
+  readonly "authorSource": PublicationSource;
+};
+
+export type CloudDraftLinkInput = {
+  readonly "localAssetId": string;
+  readonly "reference": CloudReferenceInput;
+  readonly "owned": boolean;
+  readonly "authorId"?: string;
+  readonly "source"?: PublicationSourceInput;
+  readonly "authorSource"?: PublicationSourceInput;
+};
+
+export type CloudGraphOpenRequest = {
+  readonly "reference": CloudReference;
+  readonly "name": string;
+};
+
+export type CloudGraphOpenRequestInput = {
+  readonly "reference": CloudReferenceInput;
+  readonly "name": string;
+};
+
+export type CloudGraphPreview = {
+  readonly "reference": CloudReference;
+  readonly "document": StudioDocument;
+  readonly "issues": ReadonlyArray<ComponentPreviewIssue>;
+};
+
+export type CloudGraphPreviewInput = {
+  readonly "reference": CloudReferenceInput;
+  readonly "document": StudioDocumentInput;
+  readonly "issues": ReadonlyArray<ComponentPreviewIssueInput>;
+};
+
+export type CloudGraphPublishRequest = {
+  readonly "requestId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "license": string;
+  readonly "visibility": "private" | "public";
+  readonly "changeSummary": string;
+};
+
+export type CloudGraphPublishRequestInput = {
+  readonly "requestId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "license": string;
+  readonly "visibility"?: "private" | "public";
+  readonly "changeSummary"?: string;
+};
+
+export type CloudLoginStart = {
+  readonly "authorizationUrl": string;
+};
+
+export type CloudLoginStartInput = {
+  readonly "authorizationUrl": string;
+};
+
+export type CloudMetadataRequest = {
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "visibility": "private" | "public";
+};
+
+export type CloudMetadataRequestInput = {
+  readonly "name": string;
+  readonly "description": string;
+  readonly "tags": ReadonlyArray<string>;
+  readonly "visibility": "private" | "public";
+};
+
+export type CloudPage = {
+  readonly "items": ReadonlyArray<CloudAsset>;
+  readonly "nextCursor": string | null;
+};
+
+export type CloudPageInput = {
+  readonly "items": ReadonlyArray<CloudAssetInput>;
+  readonly "nextCursor": string | null;
+};
+
+export type CloudPublicationResult = {
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "contentHash": string;
+  readonly "changed": boolean;
+};
+
+export type CloudPublicationResultInput = {
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "contentHash": string;
+  readonly "changed": boolean;
+};
+
+export type CloudPublishRequest = {
+  readonly "requestId": string;
+  readonly "localVersion": number;
+  readonly "license": string;
+  readonly "visibility": "private" | "public";
+  readonly "changeSummary": string;
+};
+
+export type CloudPublishRequestInput = {
+  readonly "requestId": string;
+  readonly "localVersion": number;
+  readonly "license": string;
+  readonly "visibility"?: "private" | "public";
+  readonly "changeSummary"?: string;
+};
+
+export type CloudReference = {
+  readonly "registryId": string;
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "contentHash": string;
+};
+
+export type CloudReferenceInput = {
+  readonly "registryId": string;
+  readonly "assetId": string;
+  readonly "version": number;
+  readonly "contentHash": string;
+};
+
+export type CloudRelations = {
+  readonly "likes": number;
+  readonly "liked": boolean;
+  readonly "following": boolean;
+  readonly "followingAuthor": boolean;
+  readonly "hasUpdate": boolean;
+  readonly "latestVersion": number;
+};
+
+export type CloudRelationsInput = {
+  readonly "likes": number;
+  readonly "liked": boolean;
+  readonly "following": boolean;
+  readonly "followingAuthor": boolean;
+  readonly "hasUpdate": boolean;
+  readonly "latestVersion": number;
+};
+
+export type CloudSettingsRequest = {
+  readonly "baseUrl": string;
+};
+
+export type CloudSettingsRequestInput = {
+  readonly "baseUrl": string;
+};
+
+export type CloudStatus = {
+  readonly "configured": boolean;
+  readonly "registryId": string;
+  readonly "user": null | CloudUser;
+};
+
+export type CloudStatusInput = {
+  readonly "configured": boolean;
+  readonly "registryId": string;
+  readonly "user": null | CloudUserInput;
+};
+
+export type CloudUser = {
+  readonly "id": string;
+  readonly "name": string;
+};
+
+export type CloudUserInput = {
+  readonly "id": string;
+  readonly "name": string;
+};
+
+export type CloudVersion = {
+  readonly "version": number;
+  readonly "contentHash": string;
+  readonly "createdAt": string;
+  readonly "note": string;
+};
+
+export type CloudVersionInput = {
+  readonly "version": number;
+  readonly "contentHash": string;
+  readonly "createdAt": string;
+  readonly "note": string;
+};
+
 export type Code = "CONFLICT" | "FORBIDDEN" | "INTERNAL" | "INVALID_ARGS" | "NOT_FOUND" | "TIMEOUT" | "UNAUTHORIZED" | "UNKNOWN_CALL";
 
 export type CodeInput = "CONFLICT" | "FORBIDDEN" | "INTERNAL" | "INVALID_ARGS" | "NOT_FOUND" | "TIMEOUT" | "UNAUTHORIZED" | "UNKNOWN_CALL";
@@ -676,6 +900,8 @@ export type ComponentSource = {
   readonly "edgeMap": Readonly<Record<string, string>>;
   readonly "hostBindings": Readonly<Record<string, string>>;
   readonly "endpoints": ReadonlyArray<ComponentEndpoint>;
+  readonly "registryId": string | null;
+  readonly "contentHash": string | null;
 };
 
 export type ComponentSourceInput = {
@@ -685,6 +911,8 @@ export type ComponentSourceInput = {
   readonly "edgeMap": Readonly<Record<string, string>>;
   readonly "hostBindings": Readonly<Record<string, string>>;
   readonly "endpoints"?: ReadonlyArray<ComponentEndpointInput>;
+  readonly "registryId"?: string | null;
+  readonly "contentHash"?: string | null;
 };
 
 export type ConnectEdgeOp = {
@@ -2987,6 +3215,28 @@ export type InInput = {
   readonly "showOnNode"?: boolean;
 };
 
+export type InsertCloudComponentRequest = {
+  readonly "requestId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "reference": CloudReference;
+  readonly "hostBindings": Readonly<Record<string, string>>;
+  readonly "x": number;
+  readonly "y": number;
+  readonly "hostOffsets": Readonly<Record<string, ComponentOffset>>;
+};
+
+export type InsertCloudComponentRequestInput = {
+  readonly "requestId": string;
+  readonly "expectedGraphRevision": number;
+  readonly "expectedLayoutRevision": number;
+  readonly "reference": CloudReferenceInput;
+  readonly "hostBindings"?: Readonly<Record<string, string>>;
+  readonly "x"?: number;
+  readonly "y"?: number;
+  readonly "hostOffsets"?: Readonly<Record<string, ComponentOffsetInput>>;
+};
+
 export type InsertComponentRequest = {
   readonly "requestId": string;
   readonly "expectedGraphRevision": number;
@@ -4592,6 +4842,16 @@ export interface ApiRequests {
   readonly "POST /api/extensions/import": ExtensionImportRequestInput;
   readonly "PUT /api/environments/storage": RuntimeStorageRequestInput;
   readonly "PUT /api/extensions/{extension_id}/enabled": ExtensionToggleRequestInput;
+  readonly "PUT /api/cloud/settings": CloudSettingsRequestInput;
+  readonly "POST /api/cloud/templates:preview": CloudReferenceInput;
+  readonly "POST /api/cloud/graphs:preview": CloudReferenceInput;
+  readonly "POST /api/cloud/graphs:open": CloudGraphOpenRequestInput;
+  readonly "POST /api/projects/{project_id}/cloud:insert": InsertCloudComponentRequestInput;
+  readonly "POST /api/cloud/drafts": CloudReferenceInput;
+  readonly "POST /api/assets/{asset_id}/cloud:publish": CloudPublishRequestInput;
+  readonly "PUT /api/assets/{asset_id}/cloud:metadata": CloudMetadataRequestInput;
+  readonly "PUT /api/projects/{project_id}/cloud:metadata": CloudMetadataRequestInput;
+  readonly "POST /api/projects/{project_id}/cloud:publish": CloudGraphPublishRequestInput;
   readonly "POST /api/catalog/nodes": CreateCatalogNodeRequestInput;
   readonly "POST /api/projects/{project_id}/variants": CaptureVariantRequestInput;
   readonly "POST /api/assets": CreateAssetRequestInput;
@@ -4678,6 +4938,28 @@ export interface ApiResponses {
   readonly "POST /api/extensions/{extension_id}/cancel": ManagementJob;
   readonly "PUT /api/extensions/{extension_id}/enabled": ManagementJob;
   readonly "DELETE /api/extensions/{extension_id}": ManagementJob;
+  readonly "GET /api/cloud/status": CloudStatus;
+  readonly "PUT /api/cloud/settings": CloudStatus;
+  readonly "POST /api/cloud/auth/start": CloudLoginStart;
+  readonly "GET /api/cloud/auth/callback": Blob;
+  readonly "POST /api/cloud/auth/logout": CloudStatus;
+  readonly "GET /api/cloud/library": CloudPage;
+  readonly "GET /api/cloud/library/{asset_id}": CloudAsset;
+  readonly "GET /api/cloud/library/{asset_id}/versions": ReadonlyArray<CloudVersion>;
+  readonly "POST /api/cloud/templates:preview": ComponentPreview;
+  readonly "POST /api/cloud/graphs:preview": CloudGraphPreview;
+  readonly "POST /api/cloud/graphs:open": ProjectRecord;
+  readonly "POST /api/projects/{project_id}/cloud:insert": InsertComponentResult;
+  readonly "POST /api/cloud/drafts": AssetRecord;
+  readonly "GET /api/assets/{asset_id}/cloud": null | CloudDraftLink;
+  readonly "GET /api/projects/{project_id}/cloud": null | CloudDraftLink;
+  readonly "POST /api/assets/{asset_id}/cloud:publish": CloudPublicationResult;
+  readonly "PUT /api/assets/{asset_id}/cloud:metadata": CloudAsset;
+  readonly "PUT /api/projects/{project_id}/cloud:metadata": CloudAsset;
+  readonly "POST /api/projects/{project_id}/cloud:publish": CloudPublicationResult;
+  readonly "GET /api/cloud/library/{asset_id}/relations": CloudRelations;
+  readonly "PUT /api/cloud/library/{asset_id}/relations/{action}": CloudRelations;
+  readonly "DELETE /api/cloud/library/{asset_id}/relations/{action}": CloudRelations;
   readonly "GET /api/health": HealthStatus;
   readonly "GET /api/logs": ReadonlyArray<EventEnvelope>;
   readonly "GET /api/capabilities": CapabilitiesResponse;

@@ -89,6 +89,11 @@ class StudioAccessMiddleware:
             token = "" if cookie is None else cookie.value
         authenticated = secrets.compare_digest(token.encode("utf-8"), self.access.token.encode("utf-8"))
         path = scope.get("path", "")
+        # Only this callback can complete a pending, one-use PKCE login. The
+        # handler authenticates its random state; no other Cloud route is public.
+        if scope["type"] == "http" and scope.get("method") == "GET" and path == "/api/cloud/auth/callback" and origin is None:
+            await self.app(scope, receive, send)
+            return
         # Platform and Studio use different loopback ports. Browser navigation
         # between them is same-site, even though their origins differ.
         # Keep this limited to a local document navigation, never cross-site fetch.

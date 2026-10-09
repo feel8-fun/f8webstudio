@@ -199,6 +199,8 @@ def create_app(
         openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )
+    from .cloud_routes import install_cloud_routes
+    install_cloud_routes(app,studio,_decode_body,_json_value)
     resolved_allowed_hosts = frozenset(
         host.strip().lower() for host in (allowed_hosts or tuple(DEFAULT_ALLOWED_HOSTS)) if host.strip()
     )

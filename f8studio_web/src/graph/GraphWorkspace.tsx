@@ -1,4 +1,5 @@
 import { ShareStateDialog } from "./ShareStateDialog";
+import { useCloud } from '../library/CloudContext';
 import { CaptureComponentDialog } from './CaptureComponentDialog';
 import { NodeInspector, EdgeInspector } from './GraphInspectors';
 import { useGraphProject } from './useGraphProject';
@@ -42,6 +43,7 @@ function savedInspectorWidth(): number {
 }
 
 function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId: string) => void }) {
+  const cloud=useCloud();
   const [sharing, setSharing] = useState(false);
   const closeSharing = useCallback(() => setSharing(false), []);
   const [capturingIds, setCapturingIds] = useState<readonly string[] | null>(null);
@@ -298,12 +300,13 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
           closeNodeMenu();
         }} onAddNode={() => { setTemplateLaunch({ position: screenToFlowPosition({ x: nodeMenu.x, y: nodeMenu.y }), serviceId: nodeMenu.node?.serviceId }); closeNodeMenu(); }} />}
       {(quickSearch || templateLaunch !== null) && project && <NodeQuickSearch key={project.projectId} catalog={catalog}
+        onlineProvider={cloud.provider}
         services={new Set(project.document.nodes.filter((node) => node.kind === 'service').map((node) => node.serviceClass))}
         templates={templates.templates} localLoading={templates.loading} localError={templates.error}
         initialTemplate={templateLaunch?.template}
         configureTemplate={templateLaunch?.configure} onAdd={(spec) => void addSpec(spec, templateLaunch?.serviceId)} onClose={closeNodeSearch}
         renderTemplate={(template, configure, onBack, onBusy) => <TemplateInsertion key={`${templateKey(template.reference)}:${configure}`} document={project.document}
-          template={template} configure={configure} preferredServiceId={templateLaunch?.serviceId ?? selectedNode?.serviceId}
+          template={template} provider={template.reference.source==='cloud'?cloud.provider:undefined} configure={configure} preferredServiceId={templateLaunch?.serviceId ?? selectedNode?.serviceId}
           position={templateLaunch?.position} onBack={onBack} onBusy={onBusy}
           onInserted={async (name) => { await reloadProject(project.projectId); reportCommand('success', 'Template added', name); closeNodeSearch(); }} />} />}
       {portMenu && <PortContextMenu target={portMenu} copied={copiedType} busy={locked} onClose={closePortMenu} onCopy={(value) => { setCopiedType(value); closePortMenu(); }} onPaste={() => {

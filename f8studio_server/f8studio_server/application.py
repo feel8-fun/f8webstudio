@@ -32,6 +32,8 @@ from .automation_tools import StudioAutomationTools
 from .catalog import CatalogService
 from .assets import AssetRepository
 from .database import StudioDatabase
+from .cloud_client import CloudClient
+from .cloud_service import CloudService
 from .editor import EditorSessionService
 from .events import EventJournal
 from f8pysdk.platform_client import PlatformClient
@@ -127,6 +129,8 @@ class StudioApplication:
             runtime=self.runtime,
             assets=self.assets,
         )
+        self.cloud = CloudService(client=CloudClient(self.data_dir),database=self.database,assets=self.assets,
+            projects=self.projects,tools=self.tools,catalog=self.catalog,platform=self.platform)
         providers = AgentProviderRegistry(project_repository.database_path.with_name("agent-providers.json"))
         self.decisions = SystemOneDecisionClient(providers)
         self.agents = AgentService(
@@ -155,6 +159,7 @@ class StudioApplication:
         await self.local.start()
 
     async def close(self) -> None:
+        await self.cloud.client.close()
         await self.agents.close()
         await self.decisions.close()
         await self.local.close()

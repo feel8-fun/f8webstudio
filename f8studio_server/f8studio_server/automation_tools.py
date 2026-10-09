@@ -10,7 +10,7 @@ from f8studio_core.graph import HistoryRequest, PatchRequest, PatchResult, Revis
 from f8studio_core.graph.spec_edit import validate_spec_snapshot
 from f8studio_core.graph.models import OperatorNode, ServiceNode
 from f8studio_core.graph.runtime_hosts import STUDIO_SERVICE_CLASS, STUDIO_SERVICE_ID
-from f8studio_core.publication import capture_component, component_document, decode_component
+from f8studio_core.publication import capture_component, component_document, decode_component, PortableComponent
 from f8studio_core.publication.insertion import prepare_component_insertion
 
 from .catalog import CatalogService, CatalogSnapshot
@@ -23,7 +23,7 @@ from .project_commits import ProjectCommits
 from .assets import AssetKind, AssetRecord, AssetRepository, CaptureComponentRequest, CreateAssetRequest, UpdateAssetRequest
 from .variant_models import CaptureVariantRequest
 from .variants import capture_variant, variant_node
-from .component_models import ComponentPreview, ComponentPreviewIssue, ComponentSource, InsertComponentRequest, InsertComponentResult
+from .component_models import ComponentPreview, ComponentPreviewIssue, ComponentSource, InsertComponentRequest, InsertComponentResult, InsertCloudComponentRequest
 from .errors import InvalidRequestError
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,9 @@ class StudioAutomationTools:
             component = decode_component(msgspec.json.encode(content))
         except ValueError as exc:
             raise InvalidRequestError(f"invalid component content: {exc}") from exc
+        return self.template_preview(asset_id, version, component)
+
+    def template_preview(self, asset_id: str, version: int, component: PortableComponent) -> ComponentPreview:
         document = component_document(component)
         issues: list[ComponentPreviewIssue] = []
         for node in document.nodes:
@@ -118,6 +121,11 @@ class StudioAutomationTools:
 
     def _prepare_component(self, project_id: str, request: InsertComponentRequest) -> tuple[PatchRequest, ComponentSource]:
         preview = self.component_preview(request.asset_id, request.version)
+        asset = self._assets.get(request.asset_id)
+        return self._prepare_template(project_id, request, preview, kind=asset.kind, name=asset.name)
+
+    def _prepare_template(self, project_id: str, request: InsertComponentRequest | InsertCloudComponentRequest,
+                          preview: ComponentPreview, *, kind: AssetKind, name: str) -> tuple[PatchRequest, ComponentSource]:
         if not preview.component.presentation.node_order:
             raise InvalidRequestError("component has no template nodes to insert")
         if preview.issues:
@@ -125,7 +133,6 @@ class StudioAutomationTools:
         document = self._projects.document(project_id)
         if (document.graph_revision, document.layout_revision) != (request.expected_graph_revision, request.expected_layout_revision):
             raise RevisionConflictError("project changed before component insertion; refresh and retry")
-        asset = self._assets.get(request.asset_id)
         builtin_host: ServiceNode | None = None
         if any(binding.service_class == STUDIO_SERVICE_CLASS for binding in preview.component.host_bindings):
             if not any(isinstance(node, ServiceNode) and node.service_id == STUDIO_SERVICE_ID for node in document.nodes):
@@ -139,14 +146,16 @@ class StudioAutomationTools:
                 host_bindings=request.host_bindings, x=request.x, y=request.y, host_offsets=request.host_offsets)
         except ValueError as exc:
             raise InvalidRequestError(f"cannot insert component: {exc}") from exc
-        if asset.kind is AssetKind.variant:
-            variant_nodes = tuple(msgspec.structs.replace(node, name=asset.name) for node in insertion.fragment.nodes)
+        if kind is AssetKind.variant:
+            variant_nodes = tuple(msgspec.structs.replace(node, name=name) for node in insertion.fragment.nodes)
             insertion = msgspec.structs.replace(insertion, fragment=msgspec.structs.replace(insertion.fragment, nodes=variant_nodes))
         if builtin_host is not None:
             insertion = msgspec.structs.replace(insertion, fragment=msgspec.structs.replace(
                 insertion.fragment, nodes=(builtin_host, *insertion.fragment.nodes)))
-        source = ComponentSource(asset_id=request.asset_id, version=request.version, node_map=insertion.node_map,
-            edge_map=insertion.edge_map, host_bindings=insertion.host_bindings, endpoints=insertion.endpoints)
+        source = ComponentSource(asset_id=preview.asset_id, version=preview.version, node_map=insertion.node_map,
+            edge_map=insertion.edge_map, host_bindings=insertion.host_bindings, endpoints=insertion.endpoints,
+            registry_id=request.reference.registry_id if isinstance(request, InsertCloudComponentRequest) else None,
+            content_hash=request.reference.content_hash if isinstance(request, InsertCloudComponentRequest) else None)
         patch = PatchRequest(request_id=request.request_id, expected_graph_revision=request.expected_graph_revision,
             expected_layout_revision=request.expected_layout_revision, operations=(insertion.fragment,))
         return patch, source
@@ -161,6 +170,17 @@ class StudioAutomationTools:
             if replay is not None:
                 return replay
             patch, source = await asyncio.to_thread(self._prepare_component, project_id, request)
+            mutation = await asyncio.to_thread(self._projects.insert_component, project_id, patch, source=source, original=request)
+            result = mutation.result if mutation.replayed else await self._commits.publish(project_id, mutation.result)
+            return InsertComponentResult(patch=result, source=source)
+
+    async def insert_cloud_template(self, project_id: str, request: InsertCloudComponentRequest,
+                                    preview: ComponentPreview, *, kind: AssetKind, name: str) -> InsertComponentResult:
+        async with self._commits.lock(project_id):
+            replay = await asyncio.to_thread(self._projects.replay_component_insertion, project_id, request)
+            if replay is not None:
+                return replay
+            patch, source = await asyncio.to_thread(self._prepare_template, project_id, request, preview, kind=kind, name=name)
             mutation = await asyncio.to_thread(self._projects.insert_component, project_id, patch, source=source, original=request)
             result = mutation.result if mutation.replayed else await self._commits.publish(project_id, mutation.result)
             return InsertComponentResult(patch=result, source=source)

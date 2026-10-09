@@ -26,6 +26,26 @@ class ComponentSource(msgspec.Struct, frozen=True, kw_only=True, rename="camel",
     edge_map: dict[str, str]
     host_bindings: dict[str, str]
     endpoints: tuple[ComponentEndpoint, ...] = ()
+    registry_id: str | None = None
+    content_hash: str | None = None
+
+
+class CloudReference(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
+    registry_id: str
+    asset_id: str
+    version: int
+    content_hash: str
+
+
+class InsertCloudComponentRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
+    request_id: str
+    expected_graph_revision: int
+    expected_layout_revision: int
+    reference: CloudReference
+    host_bindings: dict[str, str] = msgspec.field(default_factory=dict)
+    x: float = 40
+    y: float = 40
+    host_offsets: dict[str, ComponentOffset] = msgspec.field(default_factory=dict)
 
 
 class InsertComponentResult(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):

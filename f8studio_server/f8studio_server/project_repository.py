@@ -19,7 +19,8 @@ from typing import cast
 from f8studio_core.graph import PatchResult, StudioDocument, decode_document, encode_document
 
 from .models import ProjectRecord, ProjectSummary
-from .component_models import ComponentSource
+from .component_models import ComponentSource, CloudReference
+from .cloud_models import CloudDraftLink
 from .variant_models import VariantSource
 
 
@@ -97,6 +98,10 @@ class ProjectRepository:
                     PRIMARY KEY (project_id, request_id),
                     FOREIGN KEY (project_id) REFERENCES projects(project_id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS cloud_project_sources (
+                    project_id TEXT PRIMARY KEY REFERENCES projects(project_id) ON DELETE CASCADE,
+                    source BLOB NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS node_variants (
                     project_id TEXT NOT NULL,
                     node_id TEXT NOT NULL,
@@ -116,7 +121,8 @@ class ProjectRepository:
             elif _text(row[0]) != str(SCHEMA_VERSION):
                 raise RuntimeError(f"unsupported project database schema: {_text(row[0])}")
 
-    def create_project(self, record: ProjectRecord) -> ProjectRecord:
+    def create_project(self, record: ProjectRecord, *, cloud_source: CloudReference | None = None,
+                       cloud_link: CloudDraftLink | None = None) -> ProjectRecord:
         document_bytes = encode_document(record.document)
         try:
             with self._connect() as connection:
@@ -138,6 +144,13 @@ class ProjectRepository:
                         document_bytes,
                     ),
                 )
+                if cloud_source is not None:
+                    connection.execute("INSERT INTO cloud_project_sources(project_id,source) VALUES(?,?)",
+                        (record.project_id,msgspec.json.encode(cloud_source)))
+                if cloud_link is not None:
+                    connection.execute("INSERT INTO cloud_draft_links(registry_id,user_id,local_id,link) VALUES(?,'',?,?)",
+                        (cloud_link.reference.registry_id,"project:"+record.project_id,msgspec.json.encode(
+                            msgspec.structs.replace(cloud_link,local_asset_id="project:"+record.project_id))))
         except sqlite3.IntegrityError as exc:
             raise FileExistsError(f"project already exists: {record.project_id}") from exc
         return record
@@ -370,10 +383,11 @@ class ProjectRepository:
             if component_source is not None:
                 connection.execute("INSERT INTO component_insertions(project_id, request_id, source, created_at) VALUES (?, ?, ?, ?)",
                                    (project_id, result.request_id, msgspec.json.encode(component_source), timestamp))
-                connection.executemany("""INSERT INTO node_variants(project_id, node_id, asset_id, version) VALUES (?, ?, ?, ?)
-                    ON CONFLICT(project_id, node_id) DO UPDATE SET asset_id = excluded.asset_id, version = excluded.version""",
-                    ((project_id, node_id, component_source.asset_id, component_source.version)
-                     for node_id in component_source.node_map.values()))
+                if component_source.registry_id is None:
+                    connection.executemany("""INSERT INTO node_variants(project_id, node_id, asset_id, version) VALUES (?, ?, ?, ?)
+                        ON CONFLICT(project_id, node_id) DO UPDATE SET asset_id = excluded.asset_id, version = excluded.version""",
+                        ((project_id, node_id, component_source.asset_id, component_source.version)
+                         for node_id in component_source.node_map.values()))
 
     def variant_sources(self, project_id: str) -> tuple[VariantSource, ...]:
         with self._connect() as connection:

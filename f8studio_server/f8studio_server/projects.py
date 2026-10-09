@@ -31,8 +31,9 @@ from f8studio_core.graph.state_policy import apply_installed_state_policy
 
 from .models import CreateProjectRequest, ProjectRecord, ProjectSummary, UpdateProjectRequest
 from .project_repository import ProjectRepository, StoredRequest, utc_now_text
-from .component_models import ComponentSource, InsertComponentRequest, InsertComponentResult
+from .component_models import ComponentSource, InsertComponentRequest, InsertComponentResult, InsertCloudComponentRequest, CloudReference
 from .variant_models import VariantSource
+from .cloud_models import CloudDraftLink
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,20 @@ class ProjectService:
 
     def list(self) -> tuple[ProjectSummary, ...]:
         return self._repository.list_projects()
+
+    def create_from_cloud(self, document: StudioDocument, *, name: str, description: str, reference: CloudReference,
+                          link: CloudDraftLink) -> ProjectRecord:
+        with self._lock:
+            project_id = uuid4().hex
+            document = msgspec.structs.replace(document,project_id=project_id,graph_id=project_id,graph_revision=0,layout_revision=0)
+            self.validate(document)
+            store = GraphStore(document,spec_resolver=self._spec_resolver)
+            timestamp = utc_now_text()
+            record = ProjectRecord(project_id=project_id,name=name.strip() or "Cloud graph",description=description,
+                created_at=timestamp,updated_at=timestamp,document=document)
+            saved = self._repository.create_project(record,cloud_source=reference,cloud_link=link)
+            self._stores[project_id] = store
+            return saved
 
     def get(self, project_id: str) -> ProjectRecord:
         project_id = ensure_token(project_id, label="project_id")
@@ -162,7 +177,7 @@ class ProjectService:
     def patch(self, project_id: str, request: PatchRequest) -> ProjectMutationResult:
         return self._mutate(project_id, action="patch", request=request)
 
-    def replay_component_insertion(self, project_id: str, request: InsertComponentRequest) -> InsertComponentResult | None:
+    def replay_component_insertion(self, project_id: str, request: InsertComponentRequest | InsertCloudComponentRequest) -> InsertComponentResult | None:
         with self._lock:
             stored = self._repository.lookup_request(project_id, request.request_id)
             if stored is None:
@@ -171,7 +186,7 @@ class ProjectService:
             return InsertComponentResult(patch=result, source=self._repository.component_source(project_id, request.request_id))
 
     def insert_component(self, project_id: str, request: PatchRequest, *, source: ComponentSource,
-                         original: InsertComponentRequest) -> ProjectMutationResult:
+                         original: InsertComponentRequest | InsertCloudComponentRequest) -> ProjectMutationResult:
         return self._mutate(project_id, action="insert_component", request=request, component_source=source,
                             fingerprint_request=original)
 
@@ -193,7 +208,7 @@ class ProjectService:
         action: str,
         request: PatchRequest | HistoryRequest,
         component_source: ComponentSource | None = None,
-        fingerprint_request: InsertComponentRequest | None = None,
+        fingerprint_request: InsertComponentRequest | InsertCloudComponentRequest | None = None,
     ) -> ProjectMutationResult:
         project_id = ensure_token(project_id, label="project_id")
         fingerprint = _request_fingerprint(action, fingerprint_request if fingerprint_request is not None else request)

@@ -1,6 +1,8 @@
 import { createEmptyProject } from './projectFixture';
 import { mockPresentation } from './presentationFixture';
 import { expect, test } from '@playwright/test';
+import componentFixture from '../../contracts/fixtures/component-v1.json' with { type: 'json' };
+import type { AssetRecord } from '../src/api/contracts';
 
 test('shows service and deployment logs below the compact title bar', async ({ page }, testInfo) => {
   const timestamp = '2026-09-23T15:00:00.000Z';
@@ -87,39 +89,41 @@ test('renders a live 3D output in the dashboard', async ({ page }, testInfo) => 
 test('local workspaces operate without Qt', async ({ page }, testInfo) => {
   const consoleErrors: string[] = [];
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-  await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Graph Editor' })).toBeVisible();
+  const assetName = `Workspace ${testInfo.project.name}-${Date.now()}`;
+  const response = await page.request.post('/api/assets', { data: {
+    kind: 'component', name: assetName, content: componentFixture.content,
+  } });
+  expect(response.status()).toBe(201);
+  const asset = await response.json() as AssetRecord;
+  try {
+    await page.goto('/?view=assets');
+    await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
+    await page.getByLabel('Local results').getByRole('button').filter({ hasText: assetName }).click();
+    await page.getByLabel('Description', { exact: true }).fill('Local workspace smoke test');
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(page.getByText('Draft saved · v1', { exact: true })).toBeVisible();
+    const saved = await (await page.request.get(`/api/assets/${asset.assetId}`)).json();
+    expect(saved.description).toBe('Local workspace smoke test');
+    expect(saved.content).toEqual(asset.content);
+    await page.screenshot({ path: testInfo.outputPath('assets-workspace.png'), fullPage: true });
 
-  await page.getByRole('button', { name: 'Assets' }).click();
-  await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible();
-  await page.getByRole('button', { name: 'Component', exact: true }).click();
-  const assetName = `Workspace ${testInfo.project.name}`;
-  await page.getByRole('textbox', { name: 'Asset name' }).fill(assetName);
-  await page.getByRole('button', { name: 'Save version' }).click();
-  await expect(page.getByText('Saved version 2')).toBeVisible();
-  await expect(page.getByRole('button', { name: new RegExp(assetName) }).first()).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('assets-workspace.png'), fullPage: true });
+    await page.keyboard.press('Control+3');
+    await expect(page.getByRole('heading', { name: 'Live Outputs' })).toBeVisible();
+    await expect(page.getByText('Event stream online')).toBeVisible();
+    await page.getByRole('tab', { name: 'Pinned', exact: true }).click();
+    await expect(page.getByRole('tab', { name: 'Pinned', exact: true })).toHaveAttribute('aria-selected', 'true');
 
-  await page.keyboard.press('Control+3');
-  await expect(page.getByRole('heading', { name: 'Live Outputs' })).toBeVisible();
-  await expect(page.getByText('Event stream online')).toBeVisible();
-  await page.getByRole('tab', { name: 'Template' }).click();
-  await expect(page.getByRole('textbox', { name: 'Template match service id' })).toBeVisible();
+    await page.getByRole('complementary', { name: 'Workspace navigation' }).getByRole('button', { name: 'Tools', exact: true }).click();
+    await expect(page.locator('.topbar').getByRole('heading', { name: 'Tools', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Verify skeleton UDP stream', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Verify skeleton UDP stream', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Run tool', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('local-integrations-workspace.png'), fullPage: true });
 
-  await page.getByRole('button', { name: 'Local integrations' }).click();
-  await expect(page.getByRole('heading', { name: 'Local Integrations' })).toBeVisible();
-  await expect(page.getByText('udp skeleton verify')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Skeleton UDP' })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('local-integrations-workspace.png'), fullPage: true });
-
-  await page.evaluate(async (createdName) => {
-    const response = await fetch('/api/assets');
-    const assets = await response.json() as { assetId: string; name: string }[];
-    await Promise.all(assets.filter((asset) => asset.name === createdName).map((asset) =>
-      fetch(`/api/assets/${encodeURIComponent(asset.assetId)}`, { method: 'DELETE' })));
-  }, assetName);
-
-  expect(consoleErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
+  } finally {
+    expect((await page.request.delete(`/api/assets/${asset.assetId}`)).status()).toBe(204);
+  }
 });
 
 test('retired code workspace URL opens the graph editor', async ({ page }) => {

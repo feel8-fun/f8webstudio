@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { exposeResizeHandle, resizeWithHandle } from './graphGestureFixture';
 import type { GraphNode, ProjectRecord } from '../src/api/contracts';
 
 test('resizes visualizations, renders Note Markdown and moves a Backdrop group atomically', async ({ page }, testInfo) => {
@@ -71,13 +72,10 @@ test('resizes visualizations, renders Note Markdown and moves a Backdrop group a
   await flowNode(ids.viz).locator('header').click();
   const handle = flowNode(ids.viz).locator('.service-resize-handle.bottom.right');
   await expect(handle).toBeVisible();
-  const handleBox = await handle.boundingBox();
+  await exposeResizeHandle(page, handle, { x: 50, y: 45 });
   const previewBefore = await flowNode(ids.viz).locator('.studio-node-inline-text').boundingBox();
-  if (handleBox === null || previewBefore === null) throw new Error('Missing resize geometry');
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handleBox.x + handleBox.width / 2 + 50, handleBox.y + handleBox.height / 2 + 45, { steps: 12 });
-  await page.mouse.up();
+  if (previewBefore === null) throw new Error('Missing resize geometry');
+  await resizeWithHandle(page, handle, { x: 50, y: 45 });
   await expect.poll(async () => (await read()).document.layoutRevision).toBe(moved.document.layoutRevision + 1);
   const previewAfter = await flowNode(ids.viz).locator('.studio-node-inline-text').boundingBox();
   expect(previewAfter!.height).toBeGreaterThan(previewBefore.height + 25);

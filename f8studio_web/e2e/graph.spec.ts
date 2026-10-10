@@ -1,4 +1,5 @@
 import { createEmptyProject } from './projectFixture';
+import { exposeResizeHandle, resizeWithHandle } from './graphGestureFixture';
 import { mockPresentation } from './presentationFixture';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -374,6 +375,7 @@ test('resizes service canvases and restores their persisted dimensions', async (
   const resizeHandles = service.locator('.service-resize-handle');
   await expect(service).toHaveCount(1);
   await expect(operator).toHaveCount(1);
+  await fitHandlesInViewport(page, [(await service.getAttribute('data-id'))!]);
   await expect(resizeHandles).toHaveCount(0);
   await service.locator('.node-drag-handle').click({ position: { x: 24, y: 16 } });
   await expect(resizeHandles).toHaveCount(4);
@@ -393,14 +395,10 @@ test('resizes service canvases and restores their persisted dimensions', async (
     }
     return { nodeId: serviceNode.nodeId, width: layout.width, height: layout.height };
   }, projectId);
-  const viewportBefore = await viewportTransform(page);
   const bottomRight = service.locator('.service-resize-handle.bottom.right');
-  const handleBox = await bottomRight.boundingBox();
-  if (handleBox === null) throw new Error('Expected visible bottom-right service resize handle');
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handleBox.x + handleBox.width / 2 + 150, handleBox.y + handleBox.height / 2 + 90, { steps: 12 });
-  await page.mouse.up();
+  await exposeResizeHandle(page, bottomRight, { x: 150, y: 90 });
+  const viewportBefore = await viewportTransform(page);
+  await resizeWithHandle(page, bottomRight, { x: 150, y: 90 });
 
   await expect.poll(async () => page.evaluate(async ({ selectedProjectId, nodeId, width, height }) => {
     const response = await fetch(`/api/projects/${selectedProjectId}`);

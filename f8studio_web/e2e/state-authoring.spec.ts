@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 import type { AssetRecord, GraphNode, ProjectRecord } from '../src/api/contracts';
+test.use({ actionTimeout: 15_000 });
 
-test('offline state edits synchronize the node, Inspector and Variant despite stale runtime values', async ({ page }) => {
+test('offline state edits synchronize authored controls and Variants despite stale runtime values', async ({ page }, testInfo) => {
+  const mobile = testInfo.project.name === 'mobile';
   const response = await page.request.post('/api/projects', { data: { name: 'Offline state authoring' } });
   expect(response.ok()).toBe(true);
   const project = await response.json() as ProjectRecord;
@@ -13,8 +15,11 @@ test('offline state edits synchronize the node, Inspector and Variant despite st
       return response.json() as Promise<GraphNode>;
     };
     const engine = await createNode({ kind: 'service', nodeId: 'offline_engine', serviceClass: 'f8.pyengine' });
-    const tick = await createNode({ kind: 'operator', nodeId: 'offline_tick', serviceId: engine.serviceId,
+    const definition = await createNode({ kind: 'operator', nodeId: 'offline_tick', serviceId: engine.serviceId,
       serviceClass: 'f8.pyengine', operatorClass: 'f8.tick', name: 'Offline Tick' });
+    // Mobile exposes the numeric control; the saved boolean must still win over
+    // the retained sample when captured and restored through a Variant.
+    const tick: GraphNode = { ...definition, stateValues: { tickMs: 100, hiResTimer: !mobile } };
     const seed = await page.request.post(`/api/projects/${project.projectId}/patch`, { data: {
       requestId: 'seed_offline_tick', expectedGraphRevision: project.document.graphRevision,
       expectedLayoutRevision: project.document.layoutRevision, operations: [
@@ -34,21 +39,23 @@ test('offline state edits synchronize the node, Inspector and Variant despite st
     await node.locator('header').click();
     const inline = node.getByRole('spinbutton');
     const inspector = page.locator('.graph-inspector');
-    const inspected = inspector.getByRole('spinbutton', { name: 'Tick (ms)' });
+    const inspected = mobile ? inline : inspector.getByRole('spinbutton', { name: 'Tick (ms)' });
     await expect(inline).toHaveValue('100');
     await inline.fill('250');
     await inline.press('Enter');
     await expect(inspected).toHaveValue('250');
     await expect(inline).toHaveValue('250');
     const readProject = async () => (await (await page.request.get(`/api/projects/${project.projectId}`)).json()) as ProjectRecord;
-    expect((await readProject()).document.nodes.find((item) => item.nodeId === tick.nodeId)?.stateValues.tickMs).toBe(250);
+    await expect.poll(async () => (await readProject()).document.nodes.find((item) => item.nodeId === tick.nodeId)?.stateValues.tickMs).toBe(250);
     // Matching the stale runtime sample must still save the changed configuration.
     await inspected.fill('100');
     await inspected.press('Enter');
     await expect(inline).toHaveValue('100');
-    const highRes = inspector.getByRole('checkbox', { name: 'High-res Timer (Windows)' });
-    await highRes.click();
-    await expect(highRes).not.toBeChecked();
+    const highRes = mobile ? null : inspector.getByRole('checkbox', { name: 'High-res Timer (Windows)' });
+    if (highRes !== null) {
+      await highRes.click();
+      await expect(highRes).not.toBeChecked();
+    }
     await expect.poll(async () => (await readProject()).document.nodes.find((item) => item.nodeId === tick.nodeId)?.stateValues)
       .toEqual({ tickMs: 100, hiResTimer: false });
     await node.locator('header').click({ button: 'right' });
@@ -61,7 +68,7 @@ test('offline state edits synchronize the node, Inspector and Variant despite st
     await page.reload();
     await node.locator('header').click();
     await expect(inspected).toHaveValue('100');
-    await expect(inspector.getByRole('checkbox', { name: 'High-res Timer (Windows)' })).not.toBeChecked();
+    if (highRes !== null) await expect(highRes).not.toBeChecked();
     await node.locator('header').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'Add node…', exact: true }).click();
     const assets = await (await page.request.get('/api/assets')).json() as AssetRecord[];

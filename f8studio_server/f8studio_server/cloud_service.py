@@ -11,18 +11,46 @@ from f8pysdk.extension_status import ExtensionStatus
 from f8pysdk.specs import F8JsonValue
 from f8studio_core.graph import import_graph, RevisionConflictError, StudioDocument
 from f8studio_core.publication import (
-    ComponentPublication, GraphPublication, Publication, PublicationManifest, PublicationSource, PortableComponent,
-    ExtensionRequirement, InstalledExtension, OperatorRequirement, create_component_publication, create_graph_publication,
-    decode_component, decode_publication, diagnose_dependencies,
+    ComponentPublication,
+    GraphPublication,
+    Publication,
+    PublicationManifest,
+    PublicationSource,
+    PortableComponent,
+    ExtensionRequirement,
+    InstalledExtension,
+    OperatorRequirement,
+    create_component_publication,
+    create_graph_publication,
+    decode_component,
+    decode_publication,
+    diagnose_dependencies,
 )
 from .assets import AssetKind, AssetRecord, AssetRepository, CreateAssetRequest
 from .automation_tools import StudioAutomationTools
 from .catalog import CatalogService
 from .cloud_client import CloudClient, CloudRequestError
-from .cloud_models import (CloudAsset, CloudPage, CloudVersion, CloudRelations, CloudPublishRequest,
-    CloudGraphPublishRequest, CloudPublicationResult, CloudDraftLink, CloudGraphPreview, CloudMetadataRequest, CloudAssetDeletion)
+from .cloud_models import (
+    CloudAsset,
+    CloudPage,
+    CloudVersion,
+    CloudRelations,
+    CloudPublishRequest,
+    CloudGraphPublishRequest,
+    CloudPublicationResult,
+    CloudDraftLink,
+    CloudGraphPreview,
+    CloudMetadataRequest,
+    CloudAssetDeletion,
+)
 from .cloud_repository import CloudRepository
-from .component_models import CloudReference, ComponentPreview, ComponentPreviewIssue, InsertCloudComponentRequest, InsertComponentResult
+from .component_models import (
+    CloudReference,
+    ComponentPreview,
+    ComponentPreviewIssue,
+    InsertCloudComponentRequest,
+    InsertComponentResult,
+)
 from .database import StudioDatabase
 from .errors import InvalidRequestError
 from .projects import ProjectService
@@ -32,13 +60,24 @@ from .studio_runtime.identifiers import SERVICE_CLASS as STUDIO_SERVICE_CLASS
 logger = logging.getLogger(__name__)
 STUDIO_EXTENSION_ID = "webstudio"
 
+
 def json_value(value: object) -> F8JsonValue:
     return cast(F8JsonValue, msgspec.to_builtins(value, str_keys=True))
 
+
 class CloudService:
-    def __init__(self, *, client: CloudClient, database: StudioDatabase, assets: AssetRepository,
-                 projects: ProjectService, tools: StudioAutomationTools, catalog: CatalogService, platform: PlatformClient,
-                 installed: Callable[[], tuple[InstalledExtension, ...]] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        client: CloudClient,
+        database: StudioDatabase,
+        assets: AssetRepository,
+        projects: ProjectService,
+        tools: StudioAutomationTools,
+        catalog: CatalogService,
+        platform: PlatformClient,
+        installed: Callable[[], tuple[InstalledExtension, ...]] | None = None,
+    ) -> None:
         self.client = client
         self.repository = CloudRepository(database)
         self._assets = assets
@@ -72,8 +111,10 @@ class CloudService:
                 extension_id=STUDIO_EXTENSION_ID,
                 version=version if previous is None else previous.version,
                 service_classes=tuple(sorted(services)),
-                operators=tuple(OperatorRequirement(service_class=service, operator_class=operator)
-                    for service, operator in sorted(builtin_operators)),
+                operators=tuple(
+                    OperatorRequirement(service_class=service, operator_class=operator)
+                    for service, operator in sorted(builtin_operators)
+                ),
                 protocol_versions=tuple(sorted(protocols)),
                 capabilities=() if previous is None else previous.capabilities,
             )
@@ -82,26 +123,40 @@ class CloudService:
         return tuple(extensions)
 
     def _installed_extensions(self) -> tuple[InstalledExtension, ...]:
-        statuses = self._platform.read("GET", "/api/extensions", tuple[ExtensionStatus,...])
+        statuses = self._platform.read("GET", "/api/extensions", tuple[ExtensionStatus, ...])
         snapshot = self._catalog.snapshot()
-        return tuple(InstalledExtension(extension_id=item.extension_id,version=item.version,
-            service_classes=item.service_classes,
-            operators=tuple(OperatorRequirement(service_class=spec.serviceClass,operator_class=spec.operatorClass)
-                for spec in snapshot.operators if spec.serviceClass in item.service_classes),
-            protocol_versions=("f8service/2", "f8operator/2")) for item in statuses if item.state in ("installed", "available"))
+        return tuple(
+            InstalledExtension(
+                extension_id=item.extension_id,
+                version=item.version,
+                service_classes=item.service_classes,
+                operators=tuple(
+                    OperatorRequirement(service_class=spec.serviceClass, operator_class=spec.operatorClass)
+                    for spec in snapshot.operators
+                    if spec.serviceClass in item.service_classes
+                ),
+                protocol_versions=("f8service/2", "f8operator/2"),
+            )
+            for item in statuses
+            if item.state in ("installed", "available")
+        )
 
     async def search(self, *, query: str = "", cursor: str = "", view: str = "all", kind: str = "all") -> CloudPage:
         if view not in ("all", "mine", "following"):
             raise InvalidRequestError("Unsupported Cloud Library view")
         if kind not in ("all", "graph", "component", "variant"):
             raise InvalidRequestError("Unsupported Cloud asset type; choose all, graph, component or variant")
-        return await self.client.request("GET", "/v2/library?" + urlencode({"q":query,"cursor":cursor,"view":view,"kind":kind}), CloudPage)
+        return await self.client.request(
+            "GET", "/v2/library?" + urlencode({"q": query, "cursor": cursor, "view": view, "kind": kind}), CloudPage
+        )
 
     async def asset(self, asset_id: str) -> CloudAsset:
         return await self.client.request("GET", "/v2/library/" + quote(asset_id, safe=""), CloudAsset)
 
     async def versions(self, asset_id: str) -> tuple[CloudVersion, ...]:
-        return await self.client.request("GET", "/v2/library/" + quote(asset_id,safe="") + "/versions", tuple[CloudVersion,...])
+        return await self.client.request(
+            "GET", "/v2/library/" + quote(asset_id, safe="") + "/versions", tuple[CloudVersion, ...]
+        )
 
     def _check_reference(self, reference: CloudReference) -> None:
         if reference.registry_id != self.client.registry_id or not reference.registry_id:
@@ -111,7 +166,12 @@ class CloudService:
 
     async def publication(self, reference: CloudReference) -> Publication:
         self._check_reference(reference)
-        value = await self.client.request("GET", f"/v2/library/{quote(reference.asset_id,safe='')}/versions/{reference.version}", dict[str,F8JsonValue], expected_registry=reference.registry_id)
+        value = await self.client.request(
+            "GET",
+            f"/v2/library/{quote(reference.asset_id, safe='')}/versions/{reference.version}",
+            dict[str, F8JsonValue],
+            expected_registry=reference.registry_id,
+        )
         try:
             publication = decode_publication(msgspec.json.encode(value))
         except ValueError as exc:
@@ -124,23 +184,37 @@ class CloudService:
         publication = await self.publication(reference)
         if not isinstance(publication, ComponentPublication):
             raise InvalidRequestError("A graph is opened as a project, not inserted as a Component")
-        preview = await asyncio.to_thread(self._tools.template_preview, reference.asset_id, reference.version, publication.content)
+        preview = await asyncio.to_thread(
+            self._tools.template_preview, reference.asset_id, reference.version, publication.content
+        )
         installed = await asyncio.to_thread(self._installed)
-        dependency_issues = tuple(ComponentPreviewIssue(code=issue.code,node_id="",message=issue.message)
-            for issue in diagnose_dependencies(publication.manifest,installed))
-        return msgspec.structs.replace(preview,issues=(*preview.issues,*dependency_issues))
+        dependency_issues = tuple(
+            ComponentPreviewIssue(code=issue.code, node_id="", message=issue.message)
+            for issue in diagnose_dependencies(publication.manifest, installed)
+        )
+        return msgspec.structs.replace(preview, issues=(*preview.issues, *dependency_issues))
 
     async def graph_preview(self, reference: CloudReference) -> CloudGraphPreview:
         publication = await self.publication(reference)
-        if not isinstance(publication,GraphPublication):
+        if not isinstance(publication, GraphPublication):
             raise InvalidRequestError("Expected a graph publication")
         document = import_graph(msgspec.json.encode(publication.content))
-        component = PortableComponent(definitions=publication.content.definitions,services=publication.content.services,
-            operators=publication.content.operators,connections=publication.content.connections,presentation=publication.content.presentation)
-        preview = await asyncio.to_thread(self._tools.template_preview,reference.asset_id,reference.version,component)
+        component = PortableComponent(
+            definitions=publication.content.definitions,
+            services=publication.content.services,
+            operators=publication.content.operators,
+            connections=publication.content.connections,
+            presentation=publication.content.presentation,
+        )
+        preview = await asyncio.to_thread(
+            self._tools.template_preview, reference.asset_id, reference.version, component
+        )
         installed = await asyncio.to_thread(self._installed)
-        issues = tuple(ComponentPreviewIssue(code=item.code,node_id="",message=item.message) for item in diagnose_dependencies(publication.manifest,installed))
-        return CloudGraphPreview(reference=reference,document=document,issues=(*preview.issues,*issues))
+        issues = tuple(
+            ComponentPreviewIssue(code=item.code, node_id="", message=item.message)
+            for item in diagnose_dependencies(publication.manifest, installed)
+        )
+        return CloudGraphPreview(reference=reference, document=document, issues=(*preview.issues, *issues))
 
     async def open_graph(self, reference: CloudReference, *, name: str) -> ProjectRecord:
         preview = await self.graph_preview(reference)
@@ -149,10 +223,24 @@ class CloudService:
         asset = await self.asset(reference.asset_id)
         publication = await self.publication(reference)
         user = self.client.status().user
-        link = CloudDraftLink(local_asset_id="",reference=reference,owned=user is not None and user.id==asset.author.id,
-                author_id=asset.author.id,source=publication_source(reference,publication_owner=asset.author.id,user_id=None if user is None else user.id),
-                author_source=publication.manifest.source)
-        record = await asyncio.to_thread(self._projects.create_from_cloud,preview.document,name=name,description=asset.description,reference=reference,link=link)
+        link = CloudDraftLink(
+            local_asset_id="",
+            reference=reference,
+            owned=user is not None and user.id == asset.author.id,
+            author_id=asset.author.id,
+            source=publication_source(
+                reference, publication_owner=asset.author.id, user_id=None if user is None else user.id
+            ),
+            author_source=publication.manifest.source,
+        )
+        record = await asyncio.to_thread(
+            self._projects.create_from_cloud,
+            preview.document,
+            name=name,
+            description=asset.description,
+            reference=reference,
+            link=link,
+        )
         return record
 
     async def insert(self, project_id: str, request: InsertCloudComponentRequest) -> InsertComponentResult:
@@ -163,51 +251,91 @@ class CloudService:
         asset = await self.asset(request.reference.asset_id)
         if asset.kind not in ("component", "variant"):
             raise InvalidRequestError("Only Components and Variants can be inserted")
-        return await self._tools.insert_cloud_template(project_id, request, preview,
-            kind=AssetKind.variant if asset.kind == "variant" else AssetKind.component, name=asset.name)
+        return await self._tools.insert_cloud_template(
+            project_id,
+            request,
+            preview,
+            kind=AssetKind.variant if asset.kind == "variant" else AssetKind.component,
+            name=asset.name,
+        )
 
     async def relations(self, asset_id: str) -> CloudRelations:
-        value = await self.client.request("GET", "/v2/library/" + quote(asset_id,safe=""), dict[str,F8JsonValue])
+        value = await self.client.request("GET", "/v2/library/" + quote(asset_id, safe=""), dict[str, F8JsonValue])
         return msgspec.convert(value["relations"], type=CloudRelations)
 
     async def relate(self, asset_id: str, action: str, enabled: bool) -> CloudRelations:
         if action not in ("like", "follow", "follow-author"):
             raise InvalidRequestError("Unsupported Cloud relation")
-        return await self.client.request("PUT" if enabled else "DELETE",
-            f"/v2/library/{quote(asset_id,safe='')}/relations/{action}", CloudRelations)
+        return await self.client.request(
+            "PUT" if enabled else "DELETE", f"/v2/library/{quote(asset_id, safe='')}/relations/{action}", CloudRelations
+        )
 
     async def draft(self, reference: CloudReference) -> AssetRecord:
         publication = await self.publication(reference)
         if not isinstance(publication, ComponentPublication):
             raise InvalidRequestError("Graph drafts are independent projects; open this graph as a project")
         asset = await self.asset(reference.asset_id)
-        result = await asyncio.to_thread(self._assets.create, CreateAssetRequest(kind=AssetKind.variant if asset.kind == "variant" else AssetKind.component,
-            name=asset.name,description=asset.description,tags=asset.tags,content=json_value(publication.content)))
+        result = await asyncio.to_thread(
+            self._assets.create,
+            CreateAssetRequest(
+                kind=AssetKind.variant if asset.kind == "variant" else AssetKind.component,
+                name=asset.name,
+                description=asset.description,
+                tags=asset.tags,
+                content=json_value(publication.content),
+            ),
+        )
         user = self.client.status().user
-        source = publication.manifest.source if user is not None and user.id==asset.author.id else publication_source(reference,publication_owner=asset.author.id,user_id=None)
-        await asyncio.to_thread(self.repository.save_link, "", CloudDraftLink(local_asset_id=result.asset_id,
-            reference=reference,owned=user is not None and user.id == asset.author.id,author_id=asset.author.id,source=source,author_source=publication.manifest.source))
+        source = (
+            publication.manifest.source
+            if user is not None and user.id == asset.author.id
+            else publication_source(reference, publication_owner=asset.author.id, user_id=None)
+        )
+        await asyncio.to_thread(
+            self.repository.save_link,
+            "",
+            CloudDraftLink(
+                local_asset_id=result.asset_id,
+                reference=reference,
+                owned=user is not None and user.id == asset.author.id,
+                author_id=asset.author.id,
+                source=source,
+                author_source=publication.manifest.source,
+            ),
+        )
         return result
 
     def draft_link(self, asset_id: str) -> CloudDraftLink | None:
         user = self.client.status().user
-        return self.repository.link(self.client.registry_id,"" if user is None else user.id,asset_id)
+        return self.repository.link(self.client.registry_id, "" if user is None else user.id, asset_id)
 
     def local_draft_links(self) -> tuple[CloudDraftLink, ...]:
-        return tuple(link for asset in self._assets.list_assets()
-            if (link := self.draft_link(asset.asset_id)) is not None)
+        return tuple(
+            link for asset in self._assets.list_assets() if (link := self.draft_link(asset.asset_id)) is not None
+        )
 
     async def update_listing(self, asset_id: str, request: CloudMetadataRequest) -> CloudAsset:
         user = self.client.status().user
         if user is None:
             raise InvalidRequestError("Sign in to Cloud before editing your publication")
         registry = self.client.registry_id
-        asset = await self.client.request("GET", "/v2/library/" + quote(asset_id, safe=""), CloudAsset,
-            expected_registry=registry, expected_user=user.id)
+        asset = await self.client.request(
+            "GET",
+            "/v2/library/" + quote(asset_id, safe=""),
+            CloudAsset,
+            expected_registry=registry,
+            expected_user=user.id,
+        )
         if asset.author.id != user.id:
             raise CloudRequestError(403, "not_owner", "Only the author can edit this Cloud publication")
-        return await self.client.request("PUT", "/v2/library/" + quote(asset_id, safe="") + "/metadata", CloudAsset,
-            payload=request, expected_registry=registry, expected_user=user.id)
+        return await self.client.request(
+            "PUT",
+            "/v2/library/" + quote(asset_id, safe="") + "/metadata",
+            CloudAsset,
+            payload=request,
+            expected_registry=registry,
+            expected_user=user.id,
+        )
 
     async def delete_publication(self, asset_id: str) -> CloudAssetDeletion:
         user = self.client.status().user
@@ -217,98 +345,171 @@ class CloudService:
         path = "/v2/library/" + quote(asset_id, safe="")
         # Cloud authorizes the mutation (including a retry after deletion).
         # Freeze registry/account so switching either cannot redirect it.
-        result = await self.client.request("DELETE", path, CloudAssetDeletion, expected_registry=registry, expected_user=user.id)
+        result = await self.client.request(
+            "DELETE", path, CloudAssetDeletion, expected_registry=registry, expected_user=user.id
+        )
         if result.asset_id != asset_id:
             raise CloudRequestError(502, "invalid_response", "Cloud deletion returned a different asset ID")
         await asyncio.to_thread(self.repository.remove_publication, registry, user.id, asset_id)
         return result
 
-    def _manifest(self, content: PortableComponent | StudioDocument, license: str, source: PublicationSource) -> PublicationManifest:
+    def _manifest(
+        self, content: PortableComponent | StudioDocument, license: str, source: PublicationSource
+    ) -> PublicationManifest:
         installed = self._installed()
         if isinstance(content, PortableComponent):
             services = {spec.serviceClass for spec in content.definitions.services.values()}
-            operators = {(spec.serviceClass,spec.operatorClass) for spec in content.definitions.operators.values()}
+            operators = {(spec.serviceClass, spec.operatorClass) for spec in content.definitions.operators.values()}
         else:
             from f8studio_core.graph.models import OperatorNode
+
             services = {node.service_class for node in content.nodes}
-            operators = {(node.service_class,node.operator_class) for node in content.nodes if isinstance(node,OperatorNode)}
+            operators = {
+                (node.service_class, node.operator_class) for node in content.nodes if isinstance(node, OperatorNode)
+            }
         dependencies: list[ExtensionRequirement] = []
         covered_services: set[str] = set()
-        covered_operators: set[tuple[str,str]] = set()
+        covered_operators: set[tuple[str, str]] = set()
         for item in installed:
             required_services = services.intersection(item.service_classes)
-            required_operators = operators.intersection((op.service_class,op.operator_class) for op in item.operators)
+            required_operators = operators.intersection((op.service_class, op.operator_class) for op in item.operators)
             if not required_services and not required_operators:
                 continue
             if covered_services.intersection(required_services) or covered_operators.intersection(required_operators):
-                raise InvalidRequestError("Extension ownership is ambiguous; resolve duplicate installed service/operator definitions")
-            covered_services.update(required_services); covered_operators.update(required_operators)
-            dependencies.append(ExtensionRequirement(extension_id=item.extension_id,compatible_versions=(item.version,),
-                service_classes=tuple(sorted(required_services)),operators=tuple(OperatorRequirement(service_class=s,operator_class=o) for s,o in sorted(required_operators)),
-                protocol_versions=item.protocol_versions))
-        return PublicationManifest(kind="component" if isinstance(content,PortableComponent) else "graph",
-            content_format="f8component" if isinstance(content,PortableComponent) else "f8graph",content_version=1 if isinstance(content,PortableComponent) else 4,
-            license=license,source=source,dependencies=tuple(dependencies))
+                raise InvalidRequestError(
+                    "Extension ownership is ambiguous; resolve duplicate installed service/operator definitions"
+                )
+            covered_services.update(required_services)
+            covered_operators.update(required_operators)
+            dependencies.append(
+                ExtensionRequirement(
+                    extension_id=item.extension_id,
+                    compatible_versions=(item.version,),
+                    service_classes=tuple(sorted(required_services)),
+                    operators=tuple(
+                        OperatorRequirement(service_class=s, operator_class=o) for s, o in sorted(required_operators)
+                    ),
+                    protocol_versions=item.protocol_versions,
+                )
+            )
+        return PublicationManifest(
+            kind="component" if isinstance(content, PortableComponent) else "graph",
+            content_format="f8component" if isinstance(content, PortableComponent) else "f8graph",
+            content_version=1 if isinstance(content, PortableComponent) else 4,
+            license=license,
+            source=source,
+            dependencies=tuple(dependencies),
+        )
 
     async def publish(self, asset_id: str, request: CloudPublishRequest) -> CloudPublicationResult:
-        asset = await asyncio.to_thread(self._assets.get,asset_id)
-        if asset.kind not in (AssetKind.component,AssetKind.variant):
+        asset = await asyncio.to_thread(self._assets.get, asset_id)
+        if asset.kind not in (AssetKind.component, AssetKind.variant):
             raise InvalidRequestError("Only current Component and Variant templates can be published from Assets")
-        async def build(source: PublicationSource) -> dict[str,F8JsonValue]:
-            version = await asyncio.to_thread(self._assets.version,asset_id,request.local_version)
+
+        async def build(source: PublicationSource) -> dict[str, F8JsonValue]:
+            version = await asyncio.to_thread(self._assets.version, asset_id, request.local_version)
             component = decode_component(msgspec.json.encode(version.content))
-            manifest = await asyncio.to_thread(self._manifest,component,request.license,source)
+            manifest = await asyncio.to_thread(self._manifest, component, request.license, source)
             try:
-                publication = create_component_publication(component,manifest)
+                publication = create_component_publication(component, manifest)
             except ValueError as exc:
                 logger.warning("Cannot prepare Cloud component publication for %s", asset_id, exc_info=True)
                 raise InvalidRequestError(f"Cannot publish this draft: {exc}") from exc
-            return {"kind":asset.kind.value,"name":asset.name,"description":asset.description,"tags":list(asset.tags),"publication":json_value(publication)}
-        return await self._publish(asset_id,request,build)
+            return {
+                "kind": asset.kind.value,
+                "name": asset.name,
+                "description": asset.description,
+                "tags": list(asset.tags),
+                "publication": json_value(publication),
+            }
+
+        return await self._publish(asset_id, request, build)
 
     async def publish_graph(self, project_id: str, request: CloudGraphPublishRequest) -> CloudPublicationResult:
-        async def build(source: PublicationSource) -> dict[str,F8JsonValue]:
-            project = await asyncio.to_thread(self._projects.get,project_id)
+        async def build(source: PublicationSource) -> dict[str, F8JsonValue]:
+            project = await asyncio.to_thread(self._projects.get, project_id)
             document = project.document
-            if (document.graph_revision,document.layout_revision) != (request.expected_graph_revision,request.expected_layout_revision):
+            if (document.graph_revision, document.layout_revision) != (
+                request.expected_graph_revision,
+                request.expected_layout_revision,
+            ):
                 raise RevisionConflictError("Project changed before publication; refresh and retry")
-            manifest = await asyncio.to_thread(self._manifest,document,request.license,source)
+            manifest = await asyncio.to_thread(self._manifest, document, request.license, source)
             try:
-                publication = create_graph_publication(document,manifest,excluded_states=request.excluded_states)
+                publication = create_graph_publication(document, manifest, excluded_states=request.excluded_states)
             except ValueError as exc:
                 logger.warning("Cannot prepare Cloud graph publication for project %s", project_id, exc_info=True)
                 raise InvalidRequestError(f"Cannot publish this project: {exc}") from exc
-            return {"kind":"graph","name":project.name,"description":project.description,"tags":[],"publication":json_value(publication)}
-        return await self._publish("project:"+project_id,request,build)
+            return {
+                "kind": "graph",
+                "name": project.name,
+                "description": project.description,
+                "tags": [],
+                "publication": json_value(publication),
+            }
 
-    async def _publish(self, local_id: str, request: CloudPublishRequest | CloudGraphPublishRequest,
-                       build: Callable[[PublicationSource], Awaitable[dict[str,F8JsonValue]]]) -> CloudPublicationResult:
+        return await self._publish("project:" + project_id, request, build)
+
+    async def _publish(
+        self,
+        local_id: str,
+        request: CloudPublishRequest | CloudGraphPublishRequest,
+        build: Callable[[PublicationSource], Awaitable[dict[str, F8JsonValue]]],
+    ) -> CloudPublicationResult:
         user = self.client.status().user
         if user is None:
             raise InvalidRequestError("Sign in to Cloud before publishing")
         registry = self.client.registry_id
-        outgoing = await asyncio.to_thread(self.repository.outgoing,registry,user.id,request.request_id,local_id,request)
+        outgoing = await asyncio.to_thread(
+            self.repository.outgoing, registry, user.id, request.request_id, local_id, request
+        )
         if outgoing is None:
-            link = await asyncio.to_thread(self.repository.link,registry,user.id,local_id)
+            link = await asyncio.to_thread(self.repository.link, registry, user.id, local_id)
             # build is an explicit asynchronous snapshot builder; never reconstruct
             # the payload of a durable request after an uncertain network result.
-            source = link.source if link is not None else await asyncio.to_thread(self.repository.origin,registry,user.id,local_id)
+            source = (
+                link.source
+                if link is not None
+                else await asyncio.to_thread(self.repository.origin, registry, user.id, local_id)
+            )
             payload = await build(source)
-            payload.update({"requestId":request.request_id,"assetId":link.reference.asset_id if link is not None and link.owned else None,
-                "expectedVersion":link.reference.version if link is not None and link.owned else 0,
-                "visibility":request.visibility,"changeSummary":request.change_summary})
-            outgoing = await asyncio.to_thread(self.repository.outgoing,registry,user.id,request.request_id,local_id,request,payload)
+            payload.update(
+                {
+                    "requestId": request.request_id,
+                    "assetId": link.reference.asset_id if link is not None and link.owned else None,
+                    "expectedVersion": link.reference.version if link is not None and link.owned else 0,
+                    "visibility": request.visibility,
+                    "changeSummary": request.change_summary,
+                }
+            )
+            outgoing = await asyncio.to_thread(
+                self.repository.outgoing, registry, user.id, request.request_id, local_id, request, payload
+            )
         if outgoing is None:
             raise RuntimeError("Publication snapshot was not persisted")
-        payload,result = outgoing
+        payload, result = outgoing
         if result is not None:
             return result
-        result = await self.client.request("POST","/v2/library/publish",CloudPublicationResult,payload=payload,
-            expected_registry=registry,expected_user=user.id)
-        publication = msgspec.convert(payload["publication"],type=Publication)
-        link = CloudDraftLink(local_asset_id=local_id,reference=CloudReference(registry_id=registry,asset_id=result.asset_id,version=result.version,content_hash=result.content_hash),
-            owned=True,author_id=user.id,source=publication.manifest.source,author_source=publication.manifest.source)
-        await asyncio.to_thread(self.repository.complete,registry,user.id,request.request_id,result,link)
+        result = await self.client.request(
+            "POST",
+            "/v2/library/publish",
+            CloudPublicationResult,
+            payload=payload,
+            expected_registry=registry,
+            expected_user=user.id,
+        )
+        publication = msgspec.convert(payload["publication"], type=Publication)
+        link = CloudDraftLink(
+            local_asset_id=local_id,
+            reference=CloudReference(
+                registry_id=registry, asset_id=result.asset_id, version=result.version, content_hash=result.content_hash
+            ),
+            owned=True,
+            author_id=user.id,
+            source=publication.manifest.source,
+            author_source=publication.manifest.source,
+        )
+        await asyncio.to_thread(self.repository.complete, registry, user.id, request.request_id, result, link)
         return result
 
     async def update_metadata(self, asset_id: str, request: CloudMetadataRequest) -> CloudAsset:
@@ -318,11 +519,21 @@ class CloudService:
         user = self.client.status().user
         if user is None:
             raise InvalidRequestError("Sign in to Cloud before editing listing metadata")
-        return await self.client.request("PUT",f"/v2/library/{quote(link.reference.asset_id,safe='')}/metadata",CloudAsset,
-            payload=request,expected_registry=link.reference.registry_id,expected_user=user.id)
+        return await self.client.request(
+            "PUT",
+            f"/v2/library/{quote(link.reference.asset_id, safe='')}/metadata",
+            CloudAsset,
+            payload=request,
+            expected_registry=link.reference.registry_id,
+            expected_user=user.id,
+        )
+
 
 def publication_source(reference: CloudReference, *, publication_owner: str, user_id: str | None) -> PublicationSource:
-    if user_id is not None and user_id==publication_owner:
+    if user_id is not None and user_id == publication_owner:
         return PublicationSource()
-    return PublicationSource(repository_url=reference.registry_id if reference.registry_id.startswith("https://") else None,
-        asset_id=reference.asset_id,asset_version=reference.version)
+    return PublicationSource(
+        repository_url=reference.registry_id if reference.registry_id.startswith("https://") else None,
+        asset_id=reference.asset_id,
+        asset_version=reference.version,
+    )

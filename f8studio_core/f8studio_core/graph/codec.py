@@ -5,7 +5,7 @@ import json
 import msgspec
 
 from .models import StudioDocument
-from .state_policy import upgrade_document
+from .migrations import upgrade_document
 from .runtime_hosts import normalize_studio_hosts, validate_runtime_document
 
 

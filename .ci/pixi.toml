@@ -13,5 +13,20 @@ hatchling = ">=1.28,<2"
 pytest = ">=8.4,<9"
 f8pysdk = {path = "../.sdk/python", editable = true}
 
+f8studio-core = {path = "../f8studio_core", editable = true}
+f8studio-server = {path = "../f8studio_server", editable = true}
+basedpyright = ">=1.31,<2"
+httpx = ">=0.28,<1"
+
+f8platform = {path = "../.platform", editable = true, extras = ["desktop"]}
+f8media-gateway = {path = "../.media-dependency", editable = true}
+
+f8pyengine = {path = "../.engine", editable = true}
+
+f8diagnostics = {path = "../.diagnostics", editable = true}
+
 [tasks]
 publish = "python ../publish.py"
+
+test = {cmd = "python -m pytest f8studio_core/tests f8studio_server/tests -q", cwd = ".."}
+typecheck = {cmd = "basedpyright -p pyrightconfig.json", cwd = ".."}

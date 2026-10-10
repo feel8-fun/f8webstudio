@@ -120,14 +120,14 @@ test('uses persisted service dimensions while enforcing canvas minimums', () => 
     height: SERVICE_MIN_HEIGHT,
   });
 
-  const legacyDefault: StudioDocument = {
+  const authoredWidth: StudioDocument = {
     ...structuredClone(document),
     layout: document.layout.map((layout) => layout.nodeId === 'engine'
       ? { ...layout, width: 620, height: 320 }
       : layout),
   };
-  expect(projectDocument(legacyDefault).nodes[0]?.style).toMatchObject({
-    width: SERVICE_WIDTH,
+  expect(projectDocument(authoredWidth).nodes[0]?.style).toMatchObject({
+    width: 620,
     height: 320,
   });
 });

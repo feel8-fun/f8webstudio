@@ -22,7 +22,6 @@ export const STUDIO_SERVICE_CLASS = 'f8.pystudio';
 const NODE_VERTICAL_CHROME = 40;
 const CONTAINER_CONTENT_GAP = 12;
 const CONTAINER_BOTTOM_INSET = 16;
-const LEGACY_SERVICE_WIDTH = 620;
 
 export interface StudioNodeData extends Record<string, unknown> {
   readonly graphNode: GraphNode;
@@ -165,9 +164,8 @@ function serviceSize(service: GraphNode, layout: NodeLayout | undefined, childre
     const position = positions.get(child.nodeId);
     return position === undefined ? bottom : Math.max(bottom, position.y + operatorHeight(child));
   }, serviceChildInsetY(service));
-  const persistedWidth = layout?.width === LEGACY_SERVICE_WIDTH ? null : layout?.width;
   return {
-    width: Math.max(persistedWidth ?? SERVICE_WIDTH, SERVICE_WIDTH),
+    width: Math.max(layout?.width ?? SERVICE_WIDTH, SERVICE_WIDTH),
     height: Math.max(layout?.height ?? SERVICE_MIN_HEIGHT, SERVICE_MIN_HEIGHT, contentBottom + CONTAINER_BOTTOM_INSET),
   };
 }

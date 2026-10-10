@@ -178,14 +178,13 @@ def _semantic_value_schema(schema: F8DataTypeSchema) -> F8DataTypeSchema:
 
 def _semantic_data_port(port: F8DataPortSpec) -> F8DataPortSpec:
     payload = port.payload
-    if not isinstance(payload, msgspec.UnsetType):
-        payload = msgspec.structs.replace(
-            payload,
-            valueSchema=payload.valueSchema if isinstance(payload.valueSchema, msgspec.UnsetType)
-            else _semantic_value_schema(payload.valueSchema),
-            metadataSchema=payload.metadataSchema if isinstance(payload.metadataSchema, msgspec.UnsetType)
-            else _semantic_value_schema(payload.metadataSchema),
-        )
+    payload = msgspec.structs.replace(
+        payload,
+        valueSchema=payload.valueSchema if isinstance(payload.valueSchema, msgspec.UnsetType)
+        else _semantic_value_schema(payload.valueSchema),
+        metadataSchema=payload.metadataSchema if isinstance(payload.metadataSchema, msgspec.UnsetType)
+        else _semantic_value_schema(payload.metadataSchema),
+    )
     return msgspec.structs.replace(
         port,
         payload=payload,

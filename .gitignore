@@ -14,3 +14,7 @@ f8studio_server/f8studio_server/web_dist/
 .media-dependency
 f8studio_web/test-results/
 f8studio_web/playwright-report/
+
+.engine
+
+.diagnostics

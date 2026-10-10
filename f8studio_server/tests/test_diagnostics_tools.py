@@ -19,7 +19,11 @@ def test_diagnostics_install_execution_and_disable_use_generic_extension_manager
     source = tmp_path / 'package'
     (source / 'config').mkdir(parents=True)
     (source / 'env').mkdir()
-    manifest = json.loads((Path(__file__).resolve().parents[4] / 'extensions/f8diagnostics/extension.json').read_text())
+    studio_root = Path(__file__).resolve().parents[2]
+    diagnostics_root = studio_root / '.diagnostics'
+    if not diagnostics_root.is_dir():
+        diagnostics_root = studio_root.parent / 'f8diagnostics'
+    manifest = json.loads((diagnostics_root / 'extension.json').read_text())
     # Isolate runtime provisioning; preserve the actual commands, fields, and tool IDs.
     manifest['extensions'][0]['runtime'] = {'kind': 'bundled'}
     (source / 'config/extensions.json').write_text(json.dumps(manifest))

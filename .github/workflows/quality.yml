@@ -1,0 +1,52 @@
+name: quality
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: feel8-fun/f8sdk
+          ref: a977f137b8280db8566bd52a62a1805092725fb9
+          path: .sdk
+      - uses: actions/checkout@v5
+        with:
+          repository: feel8-fun/f8platform
+          ref: d77d939e849e3381e8053d211d87199cf31048e0
+          path: .platform
+      - uses: actions/checkout@v5
+        with:
+          repository: feel8-fun/f8mediagateway
+          ref: 1060f1af9edab931d16de3601be13e2fb7acb2f8
+          path: .media-dependency
+      - uses: actions/checkout@v5
+        with:
+          repository: feel8-fun/f8pyengine
+          ref: 9548fb106158903725e4734e873754b51e694d2e
+          path: .engine
+      - uses: actions/checkout@v5
+        with:
+          repository: feel8-fun/f8diagnostics
+          ref: b7de2c6a9f5388d7333c98a8f05112f756f79058
+          path: .diagnostics
+      - uses: prefix-dev/setup-pixi@v0.9.3
+        with:
+          pixi-version: v0.81.0
+          manifest-path: .ci/pixi.toml
+          cache: true
+      - run: pixi run --locked --manifest-path .ci/pixi.toml typecheck
+      - run: pixi run --locked --manifest-path .ci/pixi.toml test
+      - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web ci
+      - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web run build
+      - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web run test
+      - run: pixi run --locked --manifest-path .ci/pixi.toml python -m pip wheel --no-deps --no-build-isolation -w build/wheels f8studio_core f8studio_server

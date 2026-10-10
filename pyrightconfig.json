@@ -1,0 +1,21 @@
+{
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "strict",
+  "include": [
+    "f8studio_core/f8studio_core",
+    "f8studio_server/f8studio_server"
+  ],
+  "exclude": [
+    ".sdk",
+    ".ci/.pixi",
+    "build",
+    "dist",
+    "**/__pycache__"
+  ],
+  "extraPaths": [
+    ".sdk/python",
+    "f8studio_core",
+    "f8studio_server"
+  ],
+  "reportMissingTypeStubs": "none"
+}

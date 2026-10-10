@@ -18,7 +18,8 @@ from .models import (
 )
 from .validation import validate_document
 from .runtime_hosts import normalize_studio_hosts
-from .state_policy import ExcludedState, project_document_for_sharing, upgrade_document
+from .state_policy import ExcludedState, project_document_for_sharing
+from .migrations import upgrade_document
 
 
 EXCHANGE_FORMAT = "f8graph"

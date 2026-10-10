@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.routing import APIRoute
 
-from f8studio_server import app as app_module
+from f8studio_server import routes
 from f8studio_server.api_contracts import ROUTES
 from f8studio_server.app import create_app
 from f8studio_server.application import StudioApplication
@@ -48,18 +48,23 @@ def test_every_http_api_has_a_contract_and_openapi_references_resolve(tmp_path: 
 
 def test_contract_requests_match_actual_decoders() -> None:
     # Ensure explicit documentation cannot silently diverge from route decoding.
-    tree = ast.parse(Path(app_module.__file__).read_text())
+    handlers = [node for path in Path(routes.__file__).parent.glob("*.py")
+                for node in ast.walk(ast.parse(path.read_text()))]
+    checked = 0
     contracts = {(route.path, route.method): route for route in ROUTES}
-    for node in ast.walk(tree):
+    for node in handlers:
         if not isinstance(node, ast.AsyncFunctionDef):
             continue
         decoders = [call for call in ast.walk(node) if isinstance(call, ast.Call)
-                    and isinstance(call.func, ast.Name) and call.func.id == '_decode_body']
+                    and isinstance(call.func, ast.Name) and call.func.id == 'decode_body']
         if not decoders:
             continue
         assert len(decoders) == 1
         for decorator in node.decorator_list:
             if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
                 continue
+            checked += 1
             route = contracts[(ast.literal_eval(decorator.args[0]), decorator.func.attr)]
             assert route.request.__name__ == ast.unparse(decoders[0].args[1])
+
+    assert checked > 30, "Decoder coverage must include the domain handlers"

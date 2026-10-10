@@ -23,7 +23,8 @@ from f8pysdk.f8_naming import ensure_token
 from f8pysdk.specs import F8JsonValue, F8ServiceSpec, F8OperatorSpec, state_is_publishable
 from f8studio_core.graph import GraphEdge, NodeLayout, OperatorNode, ServiceNode, StudioDocument, validate_document
 from f8studio_core.graph.models import DOCUMENT_SCHEMA_VERSION, GraphNode
-from f8studio_core.graph.state_policy import ExcludedState, apply_installed_state_policy, project_document_for_sharing, upgrade_document
+from f8studio_core.graph.state_policy import ExcludedState, apply_installed_state_policy, project_document_for_sharing
+from f8studio_core.graph.migrations import upgrade_document
 from f8studio_core.graph.codec import decode_document
 from f8studio_core.graph.codec import canonical_json_bytes
 from f8studio_core.graph.spec_edit import validate_spec_snapshot

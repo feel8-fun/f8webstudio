@@ -6,23 +6,17 @@ from f8pysdk.specs import F8StateAccess, state_is_persistent
 from f8studio_core.graph.exchange import (
     EXCHANGE_VERSION, ExchangeMetadata, ExchangeService, GraphExchange, export_shared_graph, import_graph,
 )
-from f8studio_core.graph.models import GraphEdge, GraphEdgeKind, GraphNode, NodeLayout, OperatorNode, ServiceNode, StudioDocument
-from f8studio_core.graph.state_policy import ExcludedState, upgrade_document
+from f8studio_core.graph.models import GraphEdgeKind, OperatorNode, ServiceNode, StudioDocument
+from f8studio_core.graph.state_policy import ExcludedState
 from f8studio_core.graph.validation import validate_document
-from f8studio_core.graph.runtime_hosts import normalize_studio_hosts
 
+from .migrations import upgrade_legacy_component
 from .models import ComponentEndpoint, HostBinding, PortableComponent
 
 
 class _ComponentHeader(msgspec.Struct, kw_only=True, rename="camel"):
     schema_version: str | None = None
 
-
-class _LegacyComponent(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
-    schema_version: str
-    nodes: tuple[GraphNode, ...] = ()
-    edges: tuple[GraphEdge, ...] = ()
-    layout: tuple[NodeLayout, ...] = ()
 
 
 def component_document(component: PortableComponent) -> StudioDocument:
@@ -123,13 +117,7 @@ def decode_component(payload: bytes | str) -> PortableComponent:
     try:
         header = msgspec.json.decode(payload, type=_ComponentHeader)
         if header.schema_version is not None:
-            legacy = msgspec.json.decode(payload, type=_LegacyComponent)
-            if legacy.schema_version not in ("f8studio-component/1", "f8studio-component/2"):
-                raise ValueError(f"unsupported legacy component: {legacy.schema_version}")
-            document = StudioDocument(schema_version="f8studio-document/2" if legacy.schema_version.endswith("/1") else "f8studio-document/3",
-                project_id="component", graph_id="component", graph_revision=0, layout_revision=0,
-                nodes=legacy.nodes, edges=legacy.edges, layout=legacy.layout)
-            return capture_component(normalize_studio_hosts(upgrade_document(document)))
+            return capture_component(upgrade_legacy_component(payload))
         component = msgspec.json.decode(payload, type=PortableComponent)
     except msgspec.DecodeError as exc:
         raise ValueError(f"invalid portable component: {exc}") from exc

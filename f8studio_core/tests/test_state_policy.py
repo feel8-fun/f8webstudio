@@ -18,6 +18,8 @@ from f8studio_core.graph.spec_edit import validate_spec_snapshot
 from f8studio_core.graph.state_policy import ExcludedState, project_document_for_sharing
 from f8studio_core.graph.exchange import export_shared_graph
 from f8studio_core.graph.models import StudioDocument
+from f8studio_core.graph.models import NodeLayout
+from f8studio_core.graph.migrations import upgrade_document
 
 
 def document_with_policies() -> StudioDocument:
@@ -32,6 +34,17 @@ def document_with_policies() -> StudioDocument:
     service = catalog.create_service_node(node_id="engine", service_class="test.engine")
     node = catalog.create_operator_node(node_id="control", service_id="engine", service_class="test.engine", operator_class="test.policy", state_values={"gain": 2, "path": "/home/private/real.mp4", "secret": "secret-value"})
     return msgspec.structs.replace(new_document(project_id="policy"), nodes=(service, node))
+
+
+def test_default_width_migration_applies_only_to_old_service_layouts() -> None:
+    document = msgspec.structs.replace(document_with_policies(), layout=(
+        NodeLayout(node_id="engine", x=0, y=0, width=620),
+        NodeLayout(node_id="control", x=0, y=0, width=620),
+    ))
+    assert upgrade_document(document) == document
+    migrated = upgrade_document(msgspec.structs.replace(document, schema_version="f8studio-document/2"))
+    assert migrated.layout[0].width is None
+    assert migrated.layout[1].width == 620
 
 
 def test_local_roundtrip_keeps_private_configuration_and_runtime_updates_do_not_change_revision() -> None:

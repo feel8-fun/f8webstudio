@@ -20,7 +20,7 @@ from f8pysdk.specs import F8JsonValue, F8RuntimeGraph
 from f8studio_core.graph import HistoryRequest, PatchRequest, PatchResult, new_document
 
 from f8studio_server import create_app
-from f8studio_server.app import _patch_payload
+from f8studio_server.http_support import patch_payload as _patch_payload
 from f8studio_server.application import StudioApplication
 from f8studio_server.job_repository import JobRepository
 from f8studio_server.models import (

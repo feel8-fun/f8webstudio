@@ -7,7 +7,7 @@ from f8pysdk.specs import (
 )
 
 from .catalog import ports_for_spec
-from .models import DOCUMENT_SCHEMA_VERSION, GraphEdgeKind, GraphNode, OperatorNode, StudioDocument
+from .models import GraphEdgeKind, GraphNode, OperatorNode, StudioDocument
 from .validation import GraphValidationError, validate_document
 
 
@@ -47,16 +47,6 @@ def apply_installed_state_policy(node: GraphNode, installed: F8ServiceSpec | F8O
         spec = msgspec.structs.replace(spec, stateFields=updated)
     return normalize_node_policy(msgspec.structs.replace(node, spec=spec))
 
-
-def upgrade_document(document: StudioDocument) -> StudioDocument:
-    if document.schema_version == DOCUMENT_SCHEMA_VERSION:
-        return document
-    if document.schema_version not in ("f8studio-document/2", DOCUMENT_SCHEMA_VERSION):
-        raise GraphValidationError("unsupported_document_version", f"unsupported schemaVersion: {document.schema_version}")
-    return msgspec.structs.replace(
-        document, schema_version=DOCUMENT_SCHEMA_VERSION,
-        nodes=tuple(normalize_node_policy(node) for node in document.nodes),
-    )
 
 
 def project_document_for_sharing(

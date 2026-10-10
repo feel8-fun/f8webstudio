@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { mkdtempSync } from 'node:fs';
 
 const externalServer = process.env.F8STUDIO_E2E_EXTERNAL_SERVER === '1';
 const baseURL = process.env.F8STUDIO_E2E_BASE_URL ?? 'http://127.0.0.1:8240';
@@ -30,6 +31,6 @@ export default defineConfig({
     url: `${baseURL}/api/health`,
     timeout: 30_000,
     reuseExistingServer: false,
-    env: { F8STUDIO_DATA_DIR: join(tmpdir(), 'f8studio-web-e2e') },
+    env: { F8STUDIO_DATA_DIR: mkdtempSync(join(tmpdir(), 'f8studio-web-e2e-')) },
   },
 });

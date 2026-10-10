@@ -23,13 +23,16 @@ from f8studio_server.errors import InvalidRequestError, ConflictError
 from f8studio_server.errors import ServiceUnavailableError
 from f8studio_server.models import CreateProjectRequest, CreateCatalogNodeRequest
 
-ROOT = Path(__file__).resolve().parents[4]
-FIXTURES = ROOT / "cloud/test/fixtures"
+STUDIO_ROOT = Path(__file__).resolve().parents[2]
+CLOUD_ROOT = STUDIO_ROOT / ".cloud"
+if not CLOUD_ROOT.is_dir():
+    CLOUD_ROOT = STUDIO_ROOT.parents[1] / "cloud"
+FIXTURES = STUDIO_ROOT / "contracts/fixtures"
 
 @pytest.fixture(scope="module")
 def cloud_origin(tmp_path_factory: pytest.TempPathFactory) -> Generator[str]:
     with (tmp_path_factory.mktemp("cloud") / "worker.log").open("w") as log:
-        process = subprocess.Popen(["node",str(ROOT / "cloud/test_support/p2_server.js")],stdout=subprocess.PIPE,stderr=log,text=True)
+        process = subprocess.Popen(["node",str(CLOUD_ROOT / "test_support/p2_server.js")],stdout=subprocess.PIPE,stderr=log,text=True)
         try:
             assert process.stdout is not None
             yield str(json.loads(process.stdout.readline())["baseUrl"])
@@ -366,7 +369,7 @@ def test_real_worker_graph_publish_and_open_as_independent_project(tmp_path:Path
 @contextmanager
 def local_sandbox(data_dir: Path, port: int = 0) -> Generator[str]:
     with (data_dir.parent / "sandbox.log").open("a") as log:
-        process = subprocess.Popen(["node", str(ROOT / "cloud/scripts/library_sandbox.js"),
+        process = subprocess.Popen(["node", str(CLOUD_ROOT / "scripts/library_sandbox.js"),
             "--port", str(port), "--data-dir", str(data_dir)], stdout=subprocess.PIPE, stderr=log, text=True)
         try:
             assert process.stdout is not None

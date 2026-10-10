@@ -11,7 +11,7 @@ test('configures a provider through Settings without displaying stored credentia
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Agent settings' });
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await expect(dialog).toBeVisible();
   await dialog.getByLabel('Default model').selectOption('');
   await dialog.getByLabel('Custom model ID').fill('configured-model');
@@ -22,7 +22,7 @@ test('configures a provider through Settings without displaying stored credentia
   await expect(dialog.getByLabel('API key', { exact: true })).toHaveAttribute('type', 'password');
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('agent-settings.png') });
-  await dialog.getByRole('button', { name: 'Close agent settings' }).click();
+  await dialog.getByRole('button', { name: 'Close Settings' }).click();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(dialog.getByLabel('Default model')).toHaveValue('configured-model');
   await expect(dialog.getByLabel('API key', { exact: true })).toHaveValue('');
@@ -46,7 +46,7 @@ test('discovers models for a named connection on desktop and mobile', async ({ p
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Agent settings' });
+  const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   await dialog.getByRole('button', { name: 'New provider connection' }).click();
   await dialog.getByLabel('Connection name').fill('Work API');
   await dialog.getByLabel('API protocol').selectOption('openai_chat');
@@ -92,7 +92,7 @@ test('passes session reasoning effort to a run without calling the provider', as
     });
     await page.goto(`/?view=agent&project=${projectId}&session=${sessionId}`);
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: 'Agent settings' });
+    const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
     await dialog.getByRole('combobox', { name: 'Provider', exact: true }).selectOption(providerId);
     await expect(dialog.getByLabel('Reasoning support')).toHaveValue('unknown');
     await dialog.getByLabel('Reasoning support').selectOption('yes');
@@ -105,7 +105,7 @@ test('passes session reasoning effort to a run without calling the provider', as
     expect(saved.find((item) => item.providerId === providerId)?.modelCapabilities).toEqual(expect.arrayContaining([
       expect.objectContaining({ modelId: 'reasoning-model', thinking: true, thinkingSource: 'manual' }),
     ]));
-    await dialog.getByRole('button', { name: 'Close agent settings' }).click();
+    await dialog.getByRole('button', { name: 'Close Settings' }).click();
     await page.reload();
     const effort = page.getByRole('combobox', { name: 'Reasoning effort' });
     await expect(effort).toHaveValue('auto');

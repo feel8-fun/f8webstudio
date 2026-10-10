@@ -39,11 +39,17 @@ jobs:
           repository: feel8-fun/f8diagnostics
           ref: b7de2c6a9f5388d7333c98a8f05112f756f79058
           path: .diagnostics
+      - uses: actions/checkout@v5
+        with:
+          repository: feel8-fun/f8assetcloud
+          ref: dbcd5dad870ef5eaceda9cd160fc65b93494d909
+          path: .cloud
       - uses: prefix-dev/setup-pixi@v0.9.3
         with:
           pixi-version: v0.81.0
           manifest-path: .ci/pixi.toml
           cache: true
+      - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix .cloud ci
       - run: pixi run --locked --manifest-path .ci/pixi.toml typecheck
       - run: pixi run --locked --manifest-path .ci/pixi.toml test
       - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web ci

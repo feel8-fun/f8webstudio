@@ -1,4 +1,4 @@
-import type { CloudGraphPublishRequest, CloudPublishRequest } from '../api/contracts.gen';
+import type { CloudGraphPublishRequest, CloudPublishRequest, ExcludedState } from '../api/contracts.gen';
 
 export type PublicationAttempt =
   | { readonly kind: 'asset'; readonly request: CloudPublishRequest }
@@ -36,8 +36,18 @@ export function readPublicationAttempt(key: string): PublicationAttempt | null {
     Number.isSafeInteger(request.expectedGraphRevision) && request.expectedGraphRevision >= 0 &&
     'expectedLayoutRevision' in request && typeof request.expectedLayoutRevision === 'number' &&
     Number.isSafeInteger(request.expectedLayoutRevision) && request.expectedLayoutRevision >= 0) {
+    const excludedStates: ExcludedState[]=[];
+    if('excludedStates' in request) {
+      if(!Array.isArray(request.excludedStates))throw new Error('Saved publication retry has invalid configuration choices');
+      const fields:readonly unknown[]=request.excludedStates;
+      for(const field of fields) {
+        if(typeof field!=='object'||field===null||!('nodeId' in field)||typeof field.nodeId!=='string'||!('field' in field)||typeof field.field!=='string')
+          throw new Error('Saved publication retry has invalid configuration choices');
+        excludedStates.push({nodeId:field.nodeId,field:field.field});
+      }
+    }
     return { kind: 'graph', request: { ...options, expectedGraphRevision: request.expectedGraphRevision,
-      expectedLayoutRevision: request.expectedLayoutRevision } };
+      expectedLayoutRevision: request.expectedLayoutRevision,excludedStates } };
   }
   throw new Error('Saved publication retry has an invalid saved revision');
 }

@@ -19,7 +19,7 @@ export function createCloudProvider(registryId:string):LibraryProvider {
     },
     async versions(reference,signal) {
       const ref=cloudReference(reference);
-      return (await cloudVersions(ref.assetId,signal)).map((v)=>({reference:{source:'cloud' as const,...ref,version:v.version,contentHash:v.contentHash},createdAt:v.createdAt,note:v.note}));
+      return (await cloudVersions(ref.assetId,signal)).map((v)=>({reference:{source:'cloud' as const,...ref,version:v.version,contentHash:v.contentHash},createdAt:v.createdAt,note:v.note,license:v.license||undefined}));
     },
     async preview(reference,signal) { return cloudPreview(cloudReference(reference),signal); },
     async insert(reference,document,request) { await cloudInsert(document.projectId,{...request,reference:cloudReference(reference)}); },

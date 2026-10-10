@@ -2,7 +2,7 @@ import { Activity, Archive, Boxes, CircleDot, PackagePlus, Server, ScrollText, W
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 
 import { fetchHealth } from '../api/client';
-import { AgentSettingsButton } from '../agents/AgentSettings';
+import { SettingsButton, SettingsProvider } from './StudioSettings';
 import type { HealthStatus } from '../api/contracts';
 import { GraphWorkspace } from '../graph/GraphWorkspace';
 import { CloudProvider } from '../library/CloudContext';
@@ -114,7 +114,7 @@ export function App() {
         : 'Server unavailable';
 
   return (
-    <CloudProvider><PresentationProvider><main className={`studio-shell${view === 'code-state' || view === 'agent' ? ' studio-shell-code-state' : ''}`}>
+    <CloudProvider><PresentationProvider><SettingsProvider><main className={`studio-shell${view === 'code-state' || view === 'agent' ? ' studio-shell-code-state' : ''}`}>
       <header className="topbar">
         <div className="topbar-identity">
           <div className="brand">Feel8 Studio</div>
@@ -124,7 +124,7 @@ export function App() {
           <CircleDot size={14} aria-hidden="true" />
           <span>{statusText}</span>
         </div>
-        <AgentSettingsButton compact />
+        <SettingsButton />
       </header>
 
       {view !== 'code-state' && view !== 'agent' && <aside className="rail" aria-label="Workspace navigation">
@@ -154,6 +154,6 @@ export function App() {
           {connection.kind === 'offline' && <div className="connection-error">{connection.message}</div>}
         </div>
       </section>
-    </main></PresentationProvider></CloudProvider>
+    </main></SettingsProvider></PresentationProvider></CloudProvider>
   );
 }

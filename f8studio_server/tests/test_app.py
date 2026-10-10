@@ -89,6 +89,35 @@ def test_graph_exchange_api_restores_as_new_revision(tmp_path: Path) -> None:
         assert client.get("/api/projects/project1").json()["document"]["graphRevision"] == 2
 
 
+def test_snapshot_metadata_and_deletion_do_not_change_the_saved_or_current_graph(tmp_path: Path) -> None:
+    app = create_app(
+        web_dist=tmp_path, data_dir=tmp_path / "data", runtime=FakeRuntimeGateway(),
+        service_roots=(), media_gateway=InProcessMediaGateway(),
+    )
+    with TestClient(app) as client:
+        for project_id in ("owner", "other"):
+            assert client.post("/api/projects", json={"projectId": project_id, "name": project_id}).status_code == 201
+        before = client.get("/api/projects/owner").json()
+        created = client.post("/api/projects/owner/versions", json={"name": "Before edits", "description": "Initial checkpoint"})
+        assert created.status_code == 201
+        snapshot = created.json()
+        path = f"/api/projects/owner/versions/{snapshot['versionId']}"
+        edited = client.put(path, json={"name": "  Known good  ", "description": "  Camera and timing configured  "})
+        assert edited.status_code == 200
+        assert edited.json() == {**snapshot, "name": "Known good", "description": "Camera and timing configured"}
+        assert client.get("/api/projects/owner/versions").json() == [edited.json()]
+        assert client.put(path, json={"name": " "}).status_code == 422
+        assert client.put(path, json={"name": "Injected", "document": before["document"]}).status_code == 422
+        wrong_project_path = f"/api/projects/other/versions/{snapshot['versionId']}"
+        assert client.put(wrong_project_path, json={"name": "Wrong project"}).status_code == 404
+        assert client.delete(wrong_project_path).status_code == 404
+        assert client.get("/api/projects/owner").json() == before
+        assert client.delete(path).status_code == 204
+        assert client.delete(path).status_code == 404
+        assert client.get("/api/projects/owner/versions").json() == []
+        assert client.get("/api/projects/owner").json() == before
+
+
 def test_delete_project_removes_dependents_and_preserves_other_projects(tmp_path: Path) -> None:
     app = create_app(
         web_dist=tmp_path,

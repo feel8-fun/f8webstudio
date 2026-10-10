@@ -145,11 +145,10 @@ function NewConnectionForm({ onCreated }: { readonly onCreated: (settings: Agent
   </form>;
 }
 
-function AgentSettingsDialog({ onClose }: { readonly onClose: () => void }) {
+export function AgentSettingsContent() {
   const [providers, setProviders] = useState<readonly AgentProviderSettings[]>([]);
   const [selected, setSelected] = useState('');
   const [error, setError] = useState('');
-  const dialog = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -162,6 +161,15 @@ function AgentSettingsDialog({ onClose }: { readonly onClose: () => void }) {
     return () => controller.abort();
   }, []);
 
+  const provider = providers.find((item) => item.providerId === selected);
+  return error ? <p className="agent-error" role="alert">{error}</p> : <>
+        <div className="agent-settings-picker"><label className="agent-settings-select">Provider<select value={selected} onChange={(event) => setSelected(event.target.value)}><option value="new">New connection</option>{providers.map((item) => <option key={item.providerId} value={item.providerId}>{item.displayName}{item.configured ? ' · configured' : ''}</option>)}</select></label><button className="icon-button" type="button" title="Add connection" aria-label="New provider connection" onClick={() => setSelected('new')}><Plus size={16} /></button></div>
+        {selected === 'new' ? <NewConnectionForm onCreated={(next) => { setProviders((items) => [...items, next]); setSelected(next.providerId); }} /> : provider && <ProviderForm key={provider.providerId} settings={provider} onSaved={(next) => setProviders((items) => items.map((item) => item.providerId === next.providerId ? next : item))} onDeleted={(id) => { setProviders((items) => items.filter((item) => item.providerId !== id)); setSelected(providers.find((item) => item.providerId !== id)?.providerId ?? 'new'); }} />}
+      </>;
+}
+
+function AgentSettingsDialog({ onClose }: { readonly onClose: () => void }) {
+  const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialog.current?.querySelector('button')?.focus();
@@ -178,14 +186,10 @@ function AgentSettingsDialog({ onClose }: { readonly onClose: () => void }) {
     return () => { document.removeEventListener('keydown', keydown); previous?.focus(); };
   }, [onClose]);
 
-  const provider = providers.find((item) => item.providerId === selected);
   return createPortal(<div className="schema-dialog-backdrop">
     <section ref={dialog} className="agent-settings-dialog" role="dialog" aria-modal="true" aria-label="Agent settings">
       <header><div><h2>Agent settings</h2><p>Manage model connections</p></div><button className="icon-button" type="button" aria-label="Close agent settings" onClick={onClose}><X size={18} /></button></header>
-      {error ? <p className="agent-error" role="alert">{error}</p> : <>
-        <div className="agent-settings-picker"><label className="agent-settings-select">Provider<select value={selected} onChange={(event) => setSelected(event.target.value)}><option value="new">New connection</option>{providers.map((item) => <option key={item.providerId} value={item.providerId}>{item.displayName}{item.configured ? ' · configured' : ''}</option>)}</select></label><button className="icon-button" type="button" title="Add connection" aria-label="New provider connection" onClick={() => setSelected('new')}><Plus size={16} /></button></div>
-        {selected === 'new' ? <NewConnectionForm onCreated={(next) => { setProviders((items) => [...items, next]); setSelected(next.providerId); }} /> : provider && <ProviderForm key={provider.providerId} settings={provider} onSaved={(next) => setProviders((items) => items.map((item) => item.providerId === next.providerId ? next : item))} onDeleted={(id) => { setProviders((items) => items.filter((item) => item.providerId !== id)); setSelected(providers.find((item) => item.providerId !== id)?.providerId ?? 'new'); }} />}
-      </>}
+      <AgentSettingsContent/>
     </section>
   </div>, document.body);
 }

@@ -5,6 +5,7 @@ import msgspec
 from .component_models import CloudReference
 from .component_models import ComponentPreviewIssue
 from f8studio_core.graph import StudioDocument
+from f8studio_core.graph.state_policy import ExcludedState
 from f8studio_core.publication import PublicationSource
 
 class CloudSettingsRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
@@ -44,6 +45,7 @@ class CloudVersion(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
     content_hash: str
     created_at: str
     note: str
+    license: str = ""
 
 class CloudRelations(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
     likes: int
@@ -87,6 +89,10 @@ class CloudGraphPublishRequest(msgspec.Struct, frozen=True, kw_only=True, rename
     license: str
     visibility: Literal["public", "private"] = "public"
     change_summary: str = ""
+    excluded_states: tuple[ExcludedState, ...] = ()
+
+class CloudAssetDeletion(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
+    asset_id: str
 
 class CloudGraphOpenRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
     reference: CloudReference

@@ -78,6 +78,10 @@ class CatalogService:
         return self._catalog
 
     @property
+    def builtin_describes(self) -> tuple[F8ServiceDescribe, ...]:
+        return self._builtins
+
+    @property
     def discovered_service_classes(self) -> tuple[str, ...]:
         return self._discovered_service_classes
 

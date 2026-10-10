@@ -1,5 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { createCloudProvider } from './cloudProvider';
+import { cloudSearch } from './cloudApi';
 import type { StudioDocument } from '../api/contracts';
 afterEach(()=>vi.unstubAllGlobals());
 test('Cloud source filters graph actions and fixes registry, version and content hash',async()=>{
@@ -26,4 +27,13 @@ test('online insert uses the remote insertion route and rejects local references
   expect(fetch.mock.calls[0]![0]).toBe('/api/projects/project/cloud:insert');
   expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string).reference.version).toBe(2);
   await expect(provider.preview({source:'local',assetId:'asset',version:1},new AbortController().signal)).rejects.toThrow('local provider');
+});
+
+test('online search sends the kind with its keyword, view and pagination cursor',async()=>{
+  const fetch=vi.fn().mockResolvedValue(new Response(JSON.stringify({items:[],nextCursor:null})));
+  vi.stubGlobal('fetch',fetch);
+  await cloudSearch('same name','second-page',new AbortController().signal,'following','variant');
+  const url=new URL(fetch.mock.calls[0]![0] as string,'http://studio.test');
+  expect(url.pathname).toBe('/api/cloud/library');
+  expect(Object.fromEntries(url.searchParams)).toEqual({q:'same name',cursor:'second-page',view:'following',kind:'variant'});
 });

@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import msgspec
 import pytest
 
-from f8pysdk.specs import F8OperatorSpec, F8ServiceSpec, F8StateAccess, F8StateSpec, number_schema, string_schema
-from f8studio_core.graph import GraphEdge, GraphEdgeKind, NodeCatalog, NodeLayout, OperatorNode, new_document
+from f8pysdk.specs import F8OperatorSpec, F8ServiceSpec, F8StateAccess, F8StateSpec, any_schema, number_schema, string_schema
+from f8studio_core.graph import GraphEdge, GraphEdgeKind, NodeCatalog, NodeLayout, OperatorNode, export_shared_graph, import_graph, new_document, replace_node_spec
 from f8studio_core.graph.models import StudioDocument
 from f8studio_core.publication import (
     ExtensionRequirement, InstalledExtension, OperatorRequirement, PublicationManifest, PublicationSource,
     canonical_publication_bytes, capture_component, component_document, create_component_publication,
     create_graph_publication, decode_component, decode_publication, diagnose_dependencies, hash_publication_value,
 )
+from f8studio_core.publication.contract import publication_hash
 
 FIXTURES = Path(__file__).resolve().parents[2] / "contracts" / "fixtures"
 
@@ -148,6 +150,44 @@ def test_published_history_fixtures_are_decodable() -> None:
     for name in ("graph-v1.json", "component-v1.json"):
         publication = decode_publication((FIXTURES / name).read_bytes())
         assert publication.content_hash
+
+
+@pytest.mark.parametrize("kind", ["graph", "component"])
+def test_definition_defaults_and_examples_survive_javascript_without_changing_local_content(kind: str) -> None:
+    document = sample()
+    host = replace_node_spec(document.nodes[0], msgspec.structs.replace(document.nodes[0].spec,
+        stateFields=[F8StateSpec(name="refresh", access=F8StateAccess.rw,
+            valueSchema=number_schema(default=100.0, minimum=1.0, maximum=5000.0))]))
+    node = document.nodes[1]
+    nested = msgspec.structs.replace(any_schema(), default={"values": [0.0, -0.0, 1.0, 1e-8, True, None]},
+        examples=[{"values": [2.0, 1e-8]}])
+    node = replace_node_spec(node, msgspec.structs.replace(node.spec, stateFields=[*node.spec.stateFields,
+        F8StateSpec(name="nested", access=F8StateAccess.rw, valueSchema=nested)]))
+    document = msgspec.structs.replace(document, nodes=(host, node))
+    local_graph = export_shared_graph(document)
+    local_component = capture_component(document, node_ids=("script",))
+    local_component_bytes = msgspec.json.encode(local_component)
+    original = (create_graph_publication(document, manifest()) if kind == "graph"
+                else create_component_publication(local_component, manifest("component")))
+    returned = subprocess.run(["node", "--input-type=module", "-e",
+        "let raw = ''; for await (const chunk of process.stdin) raw += chunk; process.stdout.write(JSON.stringify(JSON.parse(raw)));"],
+        input=msgspec.json.encode(original), capture_output=True, check=True).stdout
+    decoded = decode_publication(returned)
+    assert decoded == original
+    assert export_shared_graph(document) == local_graph
+    assert msgspec.json.encode(local_component) == local_component_bytes
+    assert export_shared_graph(import_graph(local_graph)) == local_graph  # Historical references remain valid.
+    assert decoded.content.definitions == original.content.definitions
+    assert set(decoded.content.definitions.services) != set(local_component.definitions.services)
+    assert set(decoded.content.definitions.operators) != set(local_component.definitions.operators)
+    # A valid outer publication hash never excuses a tampered inner definition.
+    ref, spec = next(iter(decoded.content.definitions.operators.items()))
+    definitions = msgspec.structs.replace(decoded.content.definitions,
+        operators={ref: msgspec.structs.replace(spec, label="Tampered definition")})
+    content = msgspec.structs.replace(decoded.content, definitions=definitions)
+    tampered = msgspec.structs.replace(decoded, content=content, content_hash=publication_hash(decoded.manifest, content))
+    with pytest.raises(ValueError, match="operator definition hash mismatch"):
+        decode_publication(msgspec.json.encode(tampered))
 
 
 def test_declared_sets_and_omitted_model_defaults_have_stable_hashes() -> None:

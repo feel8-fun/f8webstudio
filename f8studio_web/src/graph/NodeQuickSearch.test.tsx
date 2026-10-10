@@ -73,7 +73,7 @@ test('searches components by description and tags, filters by kind, and keeps on
   fireEvent.change(screen.getByRole('textbox', { name: 'Quick node search' }), { target: { value: 'smooth motion' } });
   fireEvent.click(screen.getByRole('button', { name: 'Details for Signal processing' }));
   expect(details).toHaveBeenCalledWith(component, true, expect.any(Function), expect.any(Function));
-  expect(screen.getByLabelText('Template details')).toHaveTextContent('Component preview');
+  expect(screen.getByLabelText('Component details')).toHaveTextContent('Component preview');
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
   expect(screen.queryByLabelText('Library source')).not.toBeInTheDocument();
 });

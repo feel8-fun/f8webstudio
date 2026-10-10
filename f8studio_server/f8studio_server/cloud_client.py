@@ -70,13 +70,17 @@ class CloudCapabilities(msgspec.Struct, frozen=True, kw_only=True, rename="camel
 def registry_origin(value: str) -> str:
     if not value.strip():
         return ""
-    parsed = urlsplit(value.strip())
+    try:
+        parsed = urlsplit(value.strip())
+        parsed_port = parsed.port
+    except ValueError as exc:
+        raise InvalidRequestError("Cloud URL has an invalid host or port") from exc
     if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
         or parsed.path not in ("", "/") or (parsed.scheme != "https" and
             not (parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost", "::1")))):
         raise InvalidRequestError("Cloud URL must be an HTTPS origin (HTTP is allowed for loopback development)")
     host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
-    port = f":{parsed.port}" if parsed.port is not None else ""
+    port = f":{parsed_port}" if parsed_port is not None else ""
     return f"{parsed.scheme}://{host}{port}"
 
 class CloudClient:
@@ -112,12 +116,20 @@ class CloudClient:
     async def configure(self, value: str) -> CloudStatus:
         async with self._lock:
             base_url = registry_origin(value)
-            if base_url != self.registry_id:
-                if base_url:
+            if base_url:
+                try:
                     capabilities = await self._send("GET","/v2/library/capabilities",CloudCapabilities,registry=base_url)
-                    if ("f8publication/1" not in capabilities.publication_versions or "f8publication-hash/1" not in capabilities.hash_profiles
-                        or 4 not in capabilities.graph_versions or 1 not in capabilities.component_versions):
-                        raise InvalidRequestError("Cloud does not support Studio's publication contract and hash profile")
+                except CloudRequestError as exc:
+                    if exc.status != 404:
+                        raise
+                    raise CloudRequestError(422, "unsupported_cloud_api",
+                        f"{base_url} does not provide Feel8 Cloud API v2. "
+                        "The Cloud backend needs the Library v2 database migration and deployment "
+                        "before Studio can connect. Updating Studio alone does not update Cloud.") from exc
+                if ("f8publication/1" not in capabilities.publication_versions or "f8publication-hash/1" not in capabilities.hash_profiles
+                    or 4 not in capabilities.graph_versions or 1 not in capabilities.component_versions):
+                    raise InvalidRequestError("Cloud does not support Studio's publication contract and hash profile")
+            if base_url != self.registry_id:
                 self._attempts.clear()
                 self._save(CloudConnection(base_url=base_url))
         return self.status()

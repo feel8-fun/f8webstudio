@@ -603,6 +603,14 @@ export type CloudAsset = {
   readonly "updatedAt": string;
 };
 
+export type CloudAssetDeletion = {
+  readonly "assetId": string;
+};
+
+export type CloudAssetDeletionInput = {
+  readonly "assetId": string;
+};
+
 export type CloudAssetInput = {
   readonly "assetId": string;
   readonly "kind": "component" | "graph" | "variant";
@@ -664,6 +672,7 @@ export type CloudGraphPublishRequest = {
   readonly "license": string;
   readonly "visibility": "private" | "public";
   readonly "changeSummary": string;
+  readonly "excludedStates": ReadonlyArray<ExcludedState>;
 };
 
 export type CloudGraphPublishRequestInput = {
@@ -673,6 +682,7 @@ export type CloudGraphPublishRequestInput = {
   readonly "license": string;
   readonly "visibility"?: "private" | "public";
   readonly "changeSummary"?: string;
+  readonly "excludedStates"?: ReadonlyArray<ExcludedStateInput>;
 };
 
 export type CloudLoginStart = {
@@ -804,6 +814,7 @@ export type CloudVersion = {
   readonly "contentHash": string;
   readonly "createdAt": string;
   readonly "note": string;
+  readonly "license": string;
 };
 
 export type CloudVersionInput = {
@@ -811,6 +822,7 @@ export type CloudVersionInput = {
   readonly "contentHash": string;
   readonly "createdAt": string;
   readonly "note": string;
+  readonly "license"?: string;
 };
 
 export type Code = "CONFLICT" | "FORBIDDEN" | "INTERNAL" | "INVALID_ARGS" | "NOT_FOUND" | "TIMEOUT" | "UNAUTHORIZED" | "UNKNOWN_CALL";
@@ -1021,10 +1033,12 @@ export type CreateProjectRequestInput = {
 
 export type CreateProjectVersionRequest = {
   readonly "name": string;
+  readonly "description": string;
 };
 
 export type CreateProjectVersionRequestInput = {
   readonly "name"?: string;
+  readonly "description"?: string;
 };
 
 export type CreateProviderConnection = {
@@ -3358,7 +3372,7 @@ export type ManagementJobLogInput = {
 };
 
 export type ManagementJobRequest = {
-  readonly "action": "clean-unused-environments" | "deselect-application" | "disable-extension" | "enable-extension" | "import-application" | "import-extension" | "install-extension" | "prepare-application" | "prepare-environment" | "remove-environment" | "select-application" | "start-application" | "start-source" | "uninstall-application" | "uninstall-extension" | "update-application";
+  readonly "action": "clean-unused-environments" | "deselect-application" | "disable-extension" | "enable-extension" | "import-application" | "import-extension" | "install-extension" | "prepare-application" | "prepare-environment" | "remove-environment" | "restart-application" | "restart-source" | "select-application" | "start-application" | "start-source" | "uninstall-application" | "uninstall-extension" | "update-application";
   readonly "extensionId": string | null;
   readonly "environmentId": string | null;
   readonly "package": null | ExtensionImportRequest;
@@ -3367,12 +3381,20 @@ export type ManagementJobRequest = {
 };
 
 export type ManagementJobRequestInput = {
-  readonly "action": "clean-unused-environments" | "deselect-application" | "disable-extension" | "enable-extension" | "import-application" | "import-extension" | "install-extension" | "prepare-application" | "prepare-environment" | "remove-environment" | "select-application" | "start-application" | "start-source" | "uninstall-application" | "uninstall-extension" | "update-application";
+  readonly "action": "clean-unused-environments" | "deselect-application" | "disable-extension" | "enable-extension" | "import-application" | "import-extension" | "install-extension" | "prepare-application" | "prepare-environment" | "remove-environment" | "restart-application" | "restart-source" | "select-application" | "start-application" | "start-source" | "uninstall-application" | "uninstall-extension" | "update-application";
   readonly "extensionId"?: string | null;
   readonly "environmentId"?: string | null;
   readonly "package"?: null | ExtensionImportRequestInput;
   readonly "location"?: string | null;
   readonly "sha256"?: string | null;
+};
+
+export type ManagementJobsClearRequest = {
+  readonly "jobIds": ReadonlyArray<string>;
+};
+
+export type ManagementJobsClearRequestInput = {
+  readonly "jobIds": ReadonlyArray<string>;
 };
 
 export type MediaFrameMapping = {
@@ -3789,6 +3811,7 @@ export type ProjectVersion = {
   readonly "name": string;
   readonly "createdAt": string;
   readonly "document": StudioDocument;
+  readonly "description": string;
 };
 
 export type ProjectVersionInput = {
@@ -3797,6 +3820,7 @@ export type ProjectVersionInput = {
   readonly "name": string;
   readonly "createdAt": string;
   readonly "document": StudioDocumentInput;
+  readonly "description"?: string;
 };
 
 export type ProviderProbeResult = {
@@ -4697,6 +4721,16 @@ export type UpdateProjectRequestInput = {
   readonly "description"?: string;
 };
 
+export type UpdateProjectVersionRequest = {
+  readonly "name": string;
+  readonly "description": string;
+};
+
+export type UpdateProjectVersionRequestInput = {
+  readonly "name": string;
+  readonly "description"?: string;
+};
+
 export type UpdateProviderSettings = {
   readonly "model": string;
   readonly "endpoint": string;
@@ -4833,6 +4867,7 @@ export type WaveSceneInput = {
 
 export interface ApiRequests {
   readonly "POST /api/management-jobs": ManagementJobRequestInput;
+  readonly "POST /api/management-jobs/clear-completed": ManagementJobsClearRequestInput;
   readonly "POST /api/applications/import": ImportApplicationInput;
   readonly "POST /api/applications/{extension_id}/prepare": ApplicationVersionInput;
   readonly "POST /api/applications/{extension_id}/select": ApplicationVersionInput;
@@ -4848,6 +4883,7 @@ export interface ApiRequests {
   readonly "POST /api/cloud/graphs:open": CloudGraphOpenRequestInput;
   readonly "POST /api/projects/{project_id}/cloud:insert": InsertCloudComponentRequestInput;
   readonly "POST /api/cloud/drafts": CloudReferenceInput;
+  readonly "PUT /api/cloud/library/{asset_id}/metadata": CloudMetadataRequestInput;
   readonly "POST /api/assets/{asset_id}/cloud:publish": CloudPublishRequestInput;
   readonly "PUT /api/assets/{asset_id}/cloud:metadata": CloudMetadataRequestInput;
   readonly "PUT /api/projects/{project_id}/cloud:metadata": CloudMetadataRequestInput;
@@ -4868,6 +4904,7 @@ export interface ApiRequests {
   readonly "POST /api/projects/{project_id}/graph/import": GraphExchangeInput;
   readonly "PUT /api/projects/{project_id}": UpdateProjectRequestInput;
   readonly "POST /api/projects/{project_id}/versions": CreateProjectVersionRequestInput;
+  readonly "PUT /api/projects/{project_id}/versions/{version_id}": UpdateProjectVersionRequestInput;
   readonly "POST /api/editor/sessions": CreateEditorSessionRequestInput;
   readonly "PUT /api/editor/sessions/{session_id}": UpdateEditorDocumentRequestInput;
   readonly "POST /api/editor/sessions/{session_id}/completion": EditorPositionRequestInput;
@@ -4899,6 +4936,7 @@ export interface ApiRequests {
 export interface ApiResponses {
   readonly "GET /api/management-jobs": ReadonlyArray<ManagementJob>;
   readonly "POST /api/management-jobs": ManagementJob;
+  readonly "POST /api/management-jobs/clear-completed": ReadonlyArray<ManagementJob>;
   readonly "GET /api/management-jobs/{job_id}": ManagementJob;
   readonly "GET /api/management-jobs/{job_id}/logs": ManagementJobLog;
   readonly "POST /api/management-jobs/{job_id}/cancel": ManagementJob;
@@ -4911,9 +4949,11 @@ export interface ApiResponses {
   readonly "POST /api/applications/{extension_id}/uninstall": ManagementJob;
   readonly "POST /api/applications/{extension_id}/start": ManagementJob;
   readonly "POST /api/applications/{extension_id}/stop": ApplicationOperation;
+  readonly "POST /api/applications/{extension_id}/restart": ManagementJob;
   readonly "GET /api/source-applications": ReadonlyArray<SourceApplicationStatus>;
   readonly "POST /api/source-applications/{extension_id}/start": ManagementJob;
   readonly "POST /api/source-applications/{extension_id}/stop": ApplicationOperation;
+  readonly "POST /api/source-applications/{extension_id}/restart": ManagementJob;
   readonly "GET /api/extension-tools": ReadonlyArray<ToolView>;
   readonly "POST /api/extension-tools/{extension_id}/{tool_id}/run": ToolJob;
   readonly "GET /api/tool-jobs": ReadonlyArray<ToolJob>;
@@ -4945,12 +4985,15 @@ export interface ApiResponses {
   readonly "POST /api/cloud/auth/logout": CloudStatus;
   readonly "GET /api/cloud/library": CloudPage;
   readonly "GET /api/cloud/library/{asset_id}": CloudAsset;
+  readonly "DELETE /api/cloud/library/{asset_id}": CloudAssetDeletion;
   readonly "GET /api/cloud/library/{asset_id}/versions": ReadonlyArray<CloudVersion>;
   readonly "POST /api/cloud/templates:preview": ComponentPreview;
   readonly "POST /api/cloud/graphs:preview": CloudGraphPreview;
   readonly "POST /api/cloud/graphs:open": ProjectRecord;
   readonly "POST /api/projects/{project_id}/cloud:insert": InsertComponentResult;
   readonly "POST /api/cloud/drafts": AssetRecord;
+  readonly "GET /api/cloud/drafts": ReadonlyArray<CloudDraftLink>;
+  readonly "PUT /api/cloud/library/{asset_id}/metadata": CloudAsset;
   readonly "GET /api/assets/{asset_id}/cloud": null | CloudDraftLink;
   readonly "GET /api/projects/{project_id}/cloud": null | CloudDraftLink;
   readonly "POST /api/assets/{asset_id}/cloud:publish": CloudPublicationResult;
@@ -5003,6 +5046,8 @@ export interface ApiResponses {
   readonly "PUT /api/projects/{project_id}": ProjectRecord;
   readonly "GET /api/projects/{project_id}/versions": ReadonlyArray<ProjectVersion>;
   readonly "POST /api/projects/{project_id}/versions": ProjectVersion;
+  readonly "PUT /api/projects/{project_id}/versions/{version_id}": ProjectVersion;
+  readonly "DELETE /api/projects/{project_id}/versions/{version_id}": void;
   readonly "POST /api/projects/{project_id}/versions/{version_id}/restore": ProjectRecord;
   readonly "POST /api/editor/sessions": EditorSessionRecord;
   readonly "GET /api/editor/sessions/{session_id}": EditorSessionRecord;

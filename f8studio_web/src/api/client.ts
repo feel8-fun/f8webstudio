@@ -394,6 +394,12 @@ export async function fetchManagementJobs(signal?: AbortSignal): Promise<readonl
   return body.map(managementJobResponse);
 }
 
+export async function clearCompletedManagementJobs(jobIds: readonly string[]): Promise<readonly Wire.ManagementJob[]> {
+  const body = await requestJson('/api/management-jobs/clear-completed', jsonRequest('POST /api/management-jobs/clear-completed', { jobIds }));
+  if (!Array.isArray(body)) throw new Error('Invalid maintenance task list');
+  return body.map(managementJobResponse);
+}
+
 export async function cancelManagementJob(jobId: string): Promise<Wire.ManagementJob> {
   return managementJobResponse(await requestJson(`/api/management-jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }));
 }
@@ -704,14 +710,25 @@ export async function fetchAssetVersions(assetId: string, signal?: AbortSignal):
   return body as readonly AssetVersion[];
 }
 
-export async function createProjectVersion(projectId: string, name: string): Promise<ProjectVersion> {
-  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/versions`, jsonRequest('POST /api/projects/{project_id}/versions', { name }));
+export async function createProjectVersion(projectId: string, name: string, description = ''): Promise<ProjectVersion> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/versions`, jsonRequest('POST /api/projects/{project_id}/versions', { name, description }));
   if (!isObject(body) || typeof body.versionId !== 'string') throw new Error('Project version does not match f8studio-api/1');
   return body as unknown as ProjectVersion;
 }
 
-export async function fetchProjectVersions(projectId: string): Promise<readonly ProjectVersion[]> {
-  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/versions`);
+export async function updateProjectVersion(projectId: string, versionId: string, name: string, description: string): Promise<ProjectVersion> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}`,
+    jsonRequest('PUT /api/projects/{project_id}/versions/{version_id}', { name, description }));
+  if (!isObject(body) || typeof body.versionId !== 'string') throw new Error('Project version does not match f8studio-api/1');
+  return body as unknown as ProjectVersion;
+}
+
+export async function deleteProjectVersion(projectId: string, versionId: string): Promise<void> {
+  await requestJson(`/api/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}`, { method: 'DELETE' });
+}
+
+export async function fetchProjectVersions(projectId: string, signal?: AbortSignal): Promise<readonly ProjectVersion[]> {
+  const body = await requestJson(`/api/projects/${encodeURIComponent(projectId)}/versions`, { signal });
   if (!Array.isArray(body)) throw new Error('Project versions do not match f8studio-api/1');
   return body as readonly ProjectVersion[];
 }

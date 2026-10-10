@@ -93,7 +93,7 @@ export function NodeQuickSearch({ catalog, services, templates = [], initialTemp
       </div>
       <div className="library-search-body">
         <div className="library-search-list">
-          {localLoading && source !== 'cloud' && <p role="status">Loading local templates…</p>}
+          {localLoading && source !== 'cloud' && <p role="status">Loading local Variants and Components…</p>}
           {localError && source !== 'cloud' && <p role="alert">{localError}</p>}
           <div className="quick-node-results" role="listbox" aria-label="Node types">
             {results.map((entry, i) => <div className="quick-node-entry" key={entry.kind === 'template' ? templateKey(entry.template.reference) : `${entry.spec.serviceClass}:${entry.spec.specKind === 'operator' ? entry.spec.operatorClass : 'service'}`}>
@@ -110,14 +110,14 @@ export function NodeQuickSearch({ catalog, services, templates = [], initialTemp
               </div> : entry.kind === 'node' && <button className="quick-entry-info" type="button" disabled={busy} aria-label={`Details for ${entry.spec.label}`}
                 onClick={() => { setChoice(null); setNodeDetail(entry.spec); }}>Details</button>}
             </div>)}
-            {!results.length && <p>No matching nodes or templates.</p>}
+            {!results.length && <p>No matching nodes, Variants or Components.</p>}
           </div>
           {online.loading && <p role="status">Searching online…</p>}
           {online.error && <p role="alert">Online search: {online.error}</p>}
           {online.cursor && <button className="command-button" disabled={online.loading || busy} onClick={online.loadMore}>More online results</button>}
           <small>↑ ↓ select · Enter add · Esc close</small>
         </div>
-        {choice && renderTemplate && <aside className="library-detail" aria-label="Template details">
+        {choice && renderTemplate && <aside className="library-detail" aria-label={`${choice.template.kind === 'component' ? 'Component' : 'Variant'} details`}>
           {renderTemplate(choice.template, choice.configure, back, setBusy)}
         </aside>}
         {nodeDetail && <aside className="library-detail" aria-label="Node details"><strong>{nodeDetail.label}</strong>

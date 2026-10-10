@@ -308,7 +308,7 @@ function GraphWorkspaceInner({ onShowOutput }: { readonly onShowOutput: (nodeId:
         renderTemplate={(template, configure, onBack, onBusy) => <TemplateInsertion key={`${templateKey(template.reference)}:${configure}`} document={project.document}
           template={template} provider={template.reference.source==='cloud'?cloud.provider:undefined} configure={configure} preferredServiceId={templateLaunch?.serviceId ?? selectedNode?.serviceId}
           position={templateLaunch?.position} onBack={onBack} onBusy={onBusy}
-          onInserted={async (name) => { await reloadProject(project.projectId); reportCommand('success', 'Template added', name); closeNodeSearch(); }} />} />}
+          onInserted={async (name) => { await reloadProject(project.projectId); reportCommand('success', `${template.kind === 'component' ? 'Component' : 'Variant'} added`, name); closeNodeSearch(); }} />} />}
       {portMenu && <PortContextMenu target={portMenu} copied={copiedType} busy={locked} onClose={closePortMenu} onCopy={(value) => { setCopiedType(value); closePortMenu(); }} onPaste={() => {
         if (!copiedType || !project) return;
         const node = project.document.nodes.find((item) => item.nodeId === portMenu.node.nodeId);

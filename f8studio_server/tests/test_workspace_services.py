@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -212,6 +213,26 @@ def test_assets_are_validated_versioned_and_exportable(tmp_path: Path) -> None:
                 },
             )
         )
+
+
+def test_snapshot_description_migration_preserves_legacy_checkpoints(tmp_path: Path) -> None:
+    repository = ProjectRepository(tmp_path / "studio.sqlite3")
+    projects = ProjectService(repository)
+    original = projects.create(CreateProjectRequest(project_id="legacy", name="Legacy"))
+    with sqlite3.connect(repository.database_path) as connection:
+        connection.execute("""CREATE TABLE project_versions (
+            version_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, name TEXT NOT NULL,
+            created_at TEXT NOT NULL, document BLOB NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE)""")
+        connection.execute("INSERT INTO project_versions VALUES (?, ?, ?, ?, ?)",
+                           ("checkpoint", "legacy", "Old checkpoint", "2026-01-01", msgspec.json.encode(original.document)))
+    for _ in range(2):
+        assets = AssetRepository(repository.database_path)
+        version = assets.get_project_version("legacy", "checkpoint")
+        assert version.description == ""
+        assert version.document == original.document
+        assert version.name == "Old checkpoint"
+        assert version.created_at == "2026-01-01"
 
 
 def test_project_versions_restore_as_a_new_revision(tmp_path: Path) -> None:

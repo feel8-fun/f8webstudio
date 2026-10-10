@@ -8,12 +8,14 @@ import { localLibraryProvider } from './localProvider';
 import { templatePlacement } from './templatePlacement';
 import type { LibraryProvider, LibraryTemplate, LibraryVersion, TemplateReference } from './types';
 
-export function TemplateInsertion({ document, template, provider = localLibraryProvider, configure = false,
+export function TemplateInsertion({ document, template, provider = localLibraryProvider, configure = false, showVersions = true, embedded = false,
   preferredServiceId, position, onBack, onBusy, onInserted }: {
   readonly document: StudioDocument;
   readonly template: LibraryTemplate;
   readonly provider?: LibraryProvider;
   readonly configure?: boolean;
+  readonly showVersions?: boolean;
+  readonly embedded?: boolean;
   readonly preferredServiceId?: string;
   readonly position?: { readonly x: number; readonly y: number };
   readonly onBack: () => void;
@@ -28,17 +30,19 @@ export function TemplateInsertion({ document, template, provider = localLibraryP
   const [error, setError] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
   const attempted = useRef(false);
   const adding = useRef(false);
   const requestId = useRef(crypto.randomUUID());
   const label = template.kind === 'component' ? 'Component' : 'Variant';
+  const versionLicense=versions.find((version)=>version.reference.version===reference.version)?.license??template.license;
   useEffect(() => {
-    if (!needsOptions) return;
+    if (!needsOptions || !showVersions) return;
     const controller = new AbortController();
     void provider.versions(template.reference, controller.signal).then((history) => { if (!controller.signal.aborted) setVersions(history); },
-      (reason: unknown) => { if (!controller.signal.aborted) setVersionError(reason instanceof Error ? reason.message : 'Cannot load template versions'); });
+      (reason: unknown) => { if (!controller.signal.aborted) setVersionError(reason instanceof Error ? reason.message : `Cannot load ${label.toLowerCase()} versions`); });
     return () => controller.abort();
-  }, [provider, template.reference, needsOptions]);
+  }, [provider, template.reference, needsOptions, showVersions, loadRevision]);
   useEffect(() => {
     setPreview(null); setBindings({}); setError(null);
     requestId.current = crypto.randomUUID();
@@ -56,10 +60,10 @@ export function TemplateInsertion({ document, template, provider = localLibraryP
       setPreview(loaded); setBindings(next);
       if (!loaded.component.presentation.nodeOrder.length || loaded.issues.length > 0 || loaded.component.hostBindings.some((binding) => !next[binding.bindingId])) setNeedsOptions(true);
     }, (reason: unknown) => {
-      if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : 'Cannot load template'); setNeedsOptions(true); }
+      if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : `Cannot load ${label.toLowerCase()}`); setNeedsOptions(true); }
     });
     return () => controller.abort();
-  }, [provider, reference, document.nodes, preferredServiceId]);
+  }, [provider, reference, document.nodes, preferredServiceId, loadRevision]);
   const ready = preview !== null && preview.component.presentation.nodeOrder.length > 0 && preview.issues.length === 0 &&
     preview.component.hostBindings.every((binding) => bindings[binding.bindingId]);
   const add = useCallback(async () => {
@@ -72,34 +76,34 @@ export function TemplateInsertion({ document, template, provider = localLibraryP
       });
       await onInserted(template.name);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : 'Cannot add template'); setNeedsOptions(true);
+      setError(reason instanceof Error ? reason.message : `Cannot add ${label.toLowerCase()}`); setNeedsOptions(true);
     } finally { adding.current = false; setPending(false); onBusy(false); }
   }, [ready, preview, onBusy, position, document, bindings, reference, template.name, provider, onInserted]);
   useEffect(() => {
     if (ready && !needsOptions && !attempted.current) { attempted.current = true; void add(); }
   }, [ready, needsOptions, add]);
   return <div className="template-insertion" aria-label={`${label} insertion`}>
-    <strong>{template.name} · {label} · v{reference.version}</strong>
-    {!preview && !error && <p role="status">Loading template…</p>}
-    {pending && <p role="status">Adding template…</p>}
+    {!embedded && <strong>{template.name} · {label} · v{reference.version}</strong>}
+    {!preview && !error && <p role="status">Loading {label.toLowerCase()}…</p>}
+    {pending && <p role="status">Adding {label.toLowerCase()}…</p>}
     {needsOptions && <>
-      <small>{reference.source === 'local' ? 'Local template' : `Online · ${template.author?.name ?? reference.registryId}`}</small>
+      {!embedded && <><small>{reference.source === 'local' ? `Local ${label.toLowerCase()}` : `Online · ${template.author?.name ?? reference.registryId}`}</small>
       <div className="library-description markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{template.description || 'No description provided.'}</ReactMarkdown></div>
       {template.tags.length > 0 && <p className="library-tags">{template.tags.join(' · ')}</p>}
-      {template.license && <p>License: {template.license}</p>}
-      <label className="field-stack">Version<select aria-label={`${label} version`} value={reference.version} disabled={pending} onChange={(event) => {
+      {versionLicense && <p>License: {versionLicense}</p>}</>}
+      {showVersions&&<label className="field-stack">Version<select aria-label={`${label} version`} value={reference.version} disabled={pending} onChange={(event) => {
         const selected = versions.find((item) => item.reference.version === Number(event.target.value));
         if (selected) { attempted.current = false; setPreview(null); setReference(selected.reference); }
       }}>
         {!versions.some((item) => item.reference.version === reference.version) && <option value={reference.version}>v{reference.version}</option>}
         {versions.map((item) => <option key={item.reference.version} value={item.reference.version}>v{item.reference.version}</option>)}
-      </select></label>
+      </select></label>}
       {versions.find((item) => item.reference.version === reference.version)?.note && <p>{versions.find((item) => item.reference.version === reference.version)?.note}</p>}
       {versionError && <p role="alert">{versionError}</p>}
       {preview && <>
         <GraphView document={preview.document} />
         <p>{preview.component.presentation.nodeOrder.length} node(s) · {preview.component.connections.length} internal connection(s)</p>
-        {!preview.component.presentation.nodeOrder.length && <p role="alert">This template has no nodes to add.</p>}
+        {!preview.component.presentation.nodeOrder.length && <p role="alert">This {label.toLowerCase()} has no nodes to add.</p>}
         {preview.issues.map((issue, index) => <p key={index} role="alert">{issue.message}</p>)}
         {preview.component.hostBindings.map((binding) => {
           const hosts = document.nodes.filter((node) => node.kind === 'service' && node.serviceClass === binding.serviceClass);
@@ -121,9 +125,10 @@ export function TemplateInsertion({ document, template, provider = localLibraryP
       </>}
     </>}
     {error && <p role="alert">{error}</p>}
+    {error&&!preview&&<button className="command-button" disabled={pending} onClick={()=>setLoadRevision((value)=>value+1)}>Retry {label.toLowerCase()}</button>}
     <div className="template-actions">
       {needsOptions && <button className="command-button primary" type="button" disabled={pending || !ready} onClick={() => void add()}>Add node</button>}
-      <button className="command-button" type="button" disabled={pending} onClick={onBack}>Back to search</button>
+      {!embedded && <button className="command-button" type="button" disabled={pending} onClick={onBack}>Back to search</button>}
     </div>
   </div>;
 }

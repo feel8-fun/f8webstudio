@@ -48,11 +48,17 @@ def install_cloud_routes(app: FastAPI, studio: StudioApplication, read: Callable
 
     @app.get("/api/cloud/library")
     async def search(request: Request):
-        return json_value(await studio.cloud.search(query=request.query_params.get("q",""),cursor=request.query_params.get("cursor",""),view=request.query_params.get("view","all")))
+        return json_value(await studio.cloud.search(query=request.query_params.get("q",""),
+            cursor=request.query_params.get("cursor",""),view=request.query_params.get("view","all"),
+            kind=request.query_params.get("kind","all")))
 
     @app.get("/api/cloud/library/{asset_id}")
     async def asset(asset_id: str):
         return json_value(await studio.cloud.asset(asset_id))
+
+    @app.delete("/api/cloud/library/{asset_id}")
+    async def delete_publication(asset_id: str):
+        return json_value(await studio.cloud.delete_publication(asset_id))
 
     @app.get("/api/cloud/library/{asset_id}/versions")
     async def versions(asset_id: str):
@@ -91,6 +97,17 @@ def install_cloud_routes(app: FastAPI, studio: StudioApplication, read: Callable
         result = await studio.cloud.draft(value)
         await studio.events.publish(event_type="asset.created",scope="assets",payload=json_value(result))
         return json_value(result)
+
+    @app.get("/api/cloud/drafts")
+    async def local_draft_links():
+        return json_value(studio.cloud.local_draft_links())
+
+    @app.put("/api/cloud/library/{asset_id}/metadata")
+    async def update_listing(asset_id: str, request: Request):
+        value = await payload(request, CloudMetadataRequest)
+        if not isinstance(value, CloudMetadataRequest):
+            raise TypeError("Expected Cloud listing metadata")
+        return json_value(await studio.cloud.update_listing(asset_id, value))
 
     @app.get("/api/assets/{asset_id}/cloud")
     async def link(asset_id: str):

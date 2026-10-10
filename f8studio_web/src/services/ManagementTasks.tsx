@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { cancelManagementJob, fetchManagementJobLogs, fetchManagementJobs } from '../api/client';
+import { cancelManagementJob, clearCompletedManagementJobs, fetchManagementJobLogs, fetchManagementJobs } from '../api/client';
 import { isActiveJob, useHistoryVisibility } from './useHistoryVisibility';
 import type { ManagementJob } from '../api/contracts.gen';
 
@@ -46,9 +46,20 @@ export function ManagementTasks({ jobs, error }: { jobs: readonly ManagementJob[
   const [log, setLog] = useState('');
   const [failure, setFailure] = useState('');
   const [busy, setBusy] = useState('');
+  const [clearing, setClearing] = useState(false);
   const active = jobs.filter((job) => job.state === 'queued' || job.state === 'running').sort((a, b) => a.createdAt - b.createdAt);
   const recent = visible.filter((job) => !isActiveJob(job.state));
   const selectedJob = jobs.find((job) => job.jobId === selected);
+  const clearRecords = async (ids: readonly string[]) => {
+    setClearing(true); setFailure('');
+    try {
+      await clearCompletedManagementJobs(ids);
+      history.dismiss(ids);
+      if (ids.includes(selected)) setSelected('');
+    } catch (reason: unknown) {
+      setFailure(reason instanceof Error ? reason.message : 'Unable to clear task records');
+    } finally { setClearing(false); }
+  };
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
@@ -63,7 +74,7 @@ export function ManagementTasks({ jobs, error }: { jobs: readonly ManagementJob[
   return <div className="maintenance-task-menu">
     <button className="command-button" type="button" aria-expanded={open} aria-controls="maintenance-task-popover" onClick={() => { setOpen(!open); setSelected(''); }}>Tasks · {active.length} active{error || failure ? ' · error' : ''}</button>
     {open && <section id="maintenance-task-popover" className="management-tasks" aria-label="Maintenance tasks">
-    <div className="history-toolbar"><strong>Maintenance tasks · {visible.length}</strong><button className="command-button" disabled={!recent.length} onClick={() => { history.dismiss(recent.map((job) => job.jobId)); setSelected(''); }}>Delete completed</button><button className="command-button" onClick={() => { setOpen(false); setSelected(''); }}>Close tasks</button></div>
+    <div className="history-toolbar"><strong>Maintenance tasks · {visible.length}</strong><button className="command-button" disabled={clearing || !recent.length} onClick={() => void clearRecords(recent.map((job) => job.jobId))}>Delete completed</button><button className="command-button" onClick={() => { setOpen(false); setSelected(''); }}>Close tasks</button></div>
     {(error || failure) && <p role="alert">{error || failure}</p>}
     <div className="history-records">
     {[...active, ...recent].map((job) => <article key={job.jobId} className="extension-row">
@@ -77,7 +88,7 @@ export function ManagementTasks({ jobs, error }: { jobs: readonly ManagementJob[
         catch (reason: unknown) { setFailure(reason instanceof Error ? reason.message : 'Unable to cancel task'); }
         finally { setBusy(''); }
       })()}>Cancel task</button>}
-      {!isActiveJob(job.state) && <button className="command-button" onClick={() => { history.dismiss([job.jobId]); if (selected === job.jobId) setSelected(''); }}>Delete record</button>}
+      {!isActiveJob(job.state) && <button className="command-button" disabled={clearing} onClick={() => void clearRecords([job.jobId])}>Delete record</button>}
     </article>)}</div>
     {selected && <div><button className="command-button" onClick={() => setSelected('')}>Close logs</button><pre aria-label="Task logs">{log || selectedJob?.detail || 'Loading…'}</pre></div>}
   </section>}</div>;

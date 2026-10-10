@@ -58,6 +58,7 @@ from .assets import (
     AssetKind,
     CreateAssetRequest,
     CreateProjectVersionRequest,
+    UpdateProjectVersionRequest,
     UpdateAssetRequest,
 )
 from .editor import CreateEditorSessionRequest, EditorPositionRequest, UpdateEditorDocumentRequest
@@ -582,8 +583,21 @@ def create_app(
             project_id,
             payload.name,
             record.document,
+            payload.description,
         )
         return _json_value(version)
+
+    @app.put("/api/projects/{project_id}/versions/{version_id}")
+    async def update_project_version(project_id: str, version_id: str, request: Request) -> F8JsonValue:
+        payload = await _decode_body(request, UpdateProjectVersionRequest)
+        await asyncio.to_thread(studio.projects.get, project_id)
+        return _json_value(await asyncio.to_thread(studio.assets.update_project_version, project_id, version_id, payload))
+
+    @app.delete("/api/projects/{project_id}/versions/{version_id}", status_code=204)
+    async def delete_project_version(project_id: str, version_id: str) -> Response:
+        await asyncio.to_thread(studio.projects.get, project_id)
+        await asyncio.to_thread(studio.assets.delete_project_version, project_id, version_id)
+        return Response(status_code=204)
 
     @app.post("/api/projects/{project_id}/versions/{version_id}/restore")
     async def restore_project_version(project_id: str, version_id: str) -> F8JsonValue:

@@ -74,7 +74,7 @@ class GraphExchange(msgspec.Struct, frozen=True, kw_only=True, rename="camel", f
 _DECODER = msgspec.json.Decoder(GraphExchange)
 
 
-def _definition_ref(spec: F8ServiceSpec | F8OperatorSpec) -> str:
+def definition_ref(spec: F8ServiceSpec | F8OperatorSpec) -> str:
     if isinstance(spec, F8ServiceSpec):
         normalized = msgspec.json.decode(msgspec.json.encode(spec), type=F8ServiceSpec)
     else:
@@ -89,7 +89,7 @@ def export_graph(document: StudioDocument) -> bytes:
     service_definitions: dict[str, F8ServiceSpec] = {}
     operator_definitions: dict[str, F8OperatorSpec] = {}
     for node in document.nodes:
-        ref = _definition_ref(node.spec)
+        ref = definition_ref(node.spec)
         if isinstance(node, ServiceNode):
             service_definitions[ref] = node.spec
             services[node.node_id] = ExchangeService(
@@ -140,10 +140,10 @@ def import_graph(payload: bytes | str, *, project_id: str | None = None, compone
     if exchange.resources:
         raise ValueError("f8graph resources are not supported yet")
     for ref, spec in exchange.definitions.services.items():
-        if ref != _definition_ref(spec):
+        if ref != definition_ref(spec):
             raise ValueError(f"service definition hash mismatch: {ref}")
     for ref, spec in exchange.definitions.operators.items():
-        if ref != _definition_ref(spec):
+        if ref != definition_ref(spec):
             raise ValueError(f"operator definition hash mismatch: {ref}")
     services: list[ServiceNode] = []
     operators: list[OperatorNode] = []

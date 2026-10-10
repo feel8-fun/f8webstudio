@@ -16,7 +16,7 @@ export interface LibraryTemplate {
   readonly license?: string;
 }
 
-export interface LibraryVersion { readonly reference: TemplateReference; readonly createdAt: string; readonly note?: string }
+export interface LibraryVersion { readonly reference: TemplateReference; readonly createdAt: string; readonly note?: string; readonly license?: string }
 export interface LibraryPage { readonly items: readonly LibraryTemplate[]; readonly nextCursor: string | null }
 
 /** Cloud adapters call Studio Server; remote IDs never go through local asset routes. */

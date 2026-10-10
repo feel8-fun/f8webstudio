@@ -1,7 +1,8 @@
 import { expect,test } from '@playwright/test';
 import { spawn,type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import type { GraphNode,ProjectRecord } from '../src/api/contracts';
+import type { AssetRecord,GraphNode,ProjectRecord } from '../src/api/contracts';
+import type { CloudDraftLink } from '../src/api/contracts.gen';
 let worker:ChildProcess;let origin:string;
 test.beforeAll(async()=>{
   worker=spawn('node',[fileURLToPath(new URL('../../../../cloud/test_support/p2_server.js',import.meta.url))],{stdio:['ignore','pipe','pipe']});
@@ -13,11 +14,14 @@ test.beforeAll(async()=>{
   });
 });
 test.afterAll(()=>{worker?.kill();});
-test('signs in, publishes, discovers, follows and inserts a fixed Cloud template',async({page})=>{
+test('signs in, publishes, discovers, follows and inserts a fixed Cloud template',async({page},testInfo)=>{
+  test.setTimeout(90_000);
+  const reset=await page.request.put('/api/cloud/settings',{data:{baseUrl:''}});expect(reset.ok()).toBe(true);
   const created=await page.request.post('/api/projects',{data:{name:'P2 Cloud Library'}});expect(created.ok()).toBe(true);
   const project=await created.json() as ProjectRecord;
   const name=`Cloud-Tick-${project.projectId}`;
   let assetId:string|undefined;
+  let readerDraftId:string|undefined;
   try {
     const hostResponse=await page.request.post('/api/catalog/nodes',{data:{kind:'service',nodeId:'cloud_engine',serviceClass:'f8.pyengine'}});
     const host=await hostResponse.json() as GraphNode;
@@ -30,7 +34,9 @@ test('signs in, publishes, discovers, follows and inserts a fixed Cloud template
     expect(saved.ok()).toBe(true);assetId=(await saved.json() as {assetId:string}).assetId;
     await page.addInitScript((id)=>localStorage.setItem('f8studio.selectedProjectId',id),project.projectId);
     await page.goto('/?view=assets');
-    await page.locator('.cloud-account summary').click();
+    await expect(page.getByRole('button',{name:'My Cloud',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Settings',exact:true}).click();
+    await page.getByRole('navigation',{name:'Settings categories'}).getByRole('button',{name:'Cloud',exact:true}).click();
     await page.getByLabel('Cloud URL',{exact:true}).fill(origin);
     await page.getByRole('button',{name:'Save connection',exact:true}).click();
     await page.getByRole('button',{name:'Sign in to Cloud',exact:true}).click();
@@ -41,7 +47,7 @@ test('signs in, publishes, discovers, follows and inserts a fixed Cloud template
     await expect(page).toHaveURL(/view=assets/);
     const status=await (await page.request.get('/api/cloud/status')).json() as {user:{name:string}|null};expect(status.user).not.toBeNull();
     await page.locator('.asset-browser .asset-list button').filter({hasText:name}).click();
-    await page.locator('.cloud-publish summary').filter({hasText:'Publish template'}).click();
+    await page.locator('.cloud-publish').getByRole('button',{name:/^(Publish Component to Cloud|Resume publication)$/}).click();
     const publicationPath=`**/api/assets/${assetId}/cloud:publish`;
     await page.route(publicationPath,async(route)=>{
       const accepted=await route.fetch();expect(accepted.ok()).toBe(true);
@@ -51,20 +57,52 @@ test('signs in, publishes, discovers, follows and inserts a fixed Cloud template
     await expect(page.getByText('Publication response lost',{exact:true})).toBeVisible();
     await page.reload();
     await page.locator('.asset-browser .asset-list button').filter({hasText:name}).click();
-    await page.locator('.cloud-publish summary').filter({hasText:'Publish template'}).click();
+    await page.locator('.cloud-publish').getByRole('button',{name:/^(Publish Component to Cloud|Resume publication)$/}).click();
     await page.getByRole('button',{name:'Retry publication',exact:true}).click();
     await expect(page.getByText('Published v1',{exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Publish update',exact:true}).click();
     await expect(page.getByText('Content unchanged · v1',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Close Publish Component to Cloud',exact:true}).click();
+    await page.getByRole('button',{name:'My Cloud',exact:true}).click();
     await page.getByLabel('Search online Library',{exact:true}).fill(name);
     const online=page.getByRole('region',{name:'Online Library',exact:true});
-    await online.getByRole('button').filter({hasText:name}).click();
+    await page.getByRole('complementary',{name:'Cloud library sidebar'}).getByRole('button').filter({hasText:name}).click();
     await expect(online.getByRole('heading',{name:'Shared Tick',exact:true})).toBeVisible();
+    await online.locator('.cloud-listing-editor summary').click();
+    await online.getByLabel('Cloud introduction',{exact:true}).fill('# Shared Tick\n\nManaged directly in Cloud.');
+    await online.getByRole('button',{name:'Save Cloud listing',exact:true}).click();
+    await expect(online.getByText('Cloud listing saved. Content version unchanged.',{exact:true})).toBeVisible();
     await online.getByRole('button',{name:'Like · 0',exact:true}).click();
     await expect(online.getByRole('button',{name:'Unlike · 1',exact:true})).toBeVisible();
     await online.getByRole('button',{name:'Follow updates',exact:true}).click();
     await expect(online.getByRole('button',{name:'Unfollow asset',exact:true})).toBeVisible();
-    await page.screenshot({path:'/tmp/f8-p2-cloud-library.png',fullPage:true});
+    await online.getByRole('button',{name:'Edit local draft',exact:true}).click();
+    await expect(page.getByRole('textbox',{name:'Asset name',exact:true})).toHaveValue(name);
+    await expect(page.getByText('Your Cloud work · cloud v1',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Discover',exact:true}).click();
+    await page.getByLabel('Search online Library',{exact:true}).fill(name);
+    await page.getByRole('complementary',{name:'Cloud library sidebar'}).getByRole('button').filter({hasText:name}).click();
+    const sidebar=page.getByRole('complementary',{name:'Cloud library sidebar'});
+    await expect(sidebar.getByRole('navigation',{name:'Asset library'})).toBeVisible();
+    await expect(sidebar.getByLabel('Search online Library')).toBeVisible();
+    await expect(online.locator('.asset-list')).toHaveCount(0);
+    expect(await page.locator('.assets-workspace > .asset-browser').count()).toBe(1);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    for(const view of ['Following','My Cloud','Discover']) {
+      await page.getByRole('button',{name:view,exact:true}).click();
+      await sidebar.getByLabel('Search online Library').fill(name);
+      const types=sidebar.getByRole('group',{name:'Cloud asset type'});
+      await types.getByRole('button',{name:'Graphs',exact:true}).click();
+      await expect(sidebar.getByText('No Cloud works match your search and type filter.',{exact:true})).toBeVisible();
+      await expect(online.getByRole('heading',{name:name,exact:true})).toHaveCount(0);
+      await types.getByRole('button',{name:'Components',exact:true}).click();
+      await expect(types.getByRole('button',{name:'Components',exact:true})).toHaveAttribute('aria-pressed','true');
+      await sidebar.getByRole('button').filter({hasText:name}).click();
+      await expect(online.getByRole('heading',{name:name,exact:true})).toBeVisible();
+      await expect(types.getByRole('button',{name:'Variants',exact:true})).toBeVisible();
+      expect(await types.getByRole('button').evaluateAll((buttons)=>buttons.every((button)=>button.scrollWidth<=button.clientWidth))).toBe(true);
+    }
+    await page.screenshot({path:`/tmp/f8-cloud-sidebar-${testInfo.project.name}.png`,fullPage:true});
     await page.getByRole('button',{name:'Graph',exact:true}).click();
     await page.getByRole('button',{name:'Quick node search',exact:true}).click();
     const dialog=page.getByRole('dialog',{name:'Quick node search',exact:true});
@@ -77,9 +115,84 @@ test('signs in, publishes, discovers, follows and inserts a fixed Cloud template
     const after=await (await page.request.get(`/api/projects/${project.projectId}`)).json() as ProjectRecord;
     expect(after.document.nodes.filter((node)=>node.kind==='service')).toHaveLength(1);
     expect(after.document.nodes.filter((node)=>node.kind==='operator')).toHaveLength(2);
+    const originalLink=await (await page.request.get(`/api/assets/${assetId}/cloud`)).json() as CloudDraftLink;
+    const originalDraft=await (await page.request.get(`/api/assets/${assetId}`)).json() as AssetRecord;
+    const updatedDraft=await page.request.put(`/api/assets/${assetId}`,{data:{name:originalDraft.name,description:originalDraft.description,
+      tags:originalDraft.tags,content:originalDraft.content,expectedVersion:originalDraft.currentVersion}});
+    expect(updatedDraft.ok()).toBe(true);
+    const version2=await page.request.post(`/api/assets/${assetId}/cloud:publish`,{data:{requestId:'second-release',localVersion:(await updatedDraft.json() as AssetRecord).currentVersion,
+      license:'Apache-2.0',visibility:'public',changeSummary:'Second release with updated license'}});
+    expect(version2.ok()).toBe(true);expect((await version2.json() as {version:number}).version).toBe(2);
+    await page.goto('/?view=assets&library=discover');
+    await page.getByRole('button',{name:'Settings',exact:true}).click();
+    await page.getByRole('navigation',{name:'Settings categories'}).getByRole('button',{name:'Cloud',exact:true}).click();
+    await page.getByRole('button',{name:'Sign out',exact:true}).click();
+    await page.getByRole('button',{name:'Sign in to Cloud',exact:true}).click();
+    await expect(page).toHaveURL(new RegExp('/v1/auth/desktop/authorize'));
+    await page.locator('input[name="email"]').fill('library-reader@example.com');
+    await page.locator('input[name="password"]').fill('reader-password');
+    await page.locator('form').filter({has:page.locator('input[name="password"]')}).getByRole('button',{name:/Use a different account|Sign in to Asset Cloud/}).click();
+    await expect(page).toHaveURL(/view=assets/);
+    await page.getByRole('button',{name:'Discover',exact:true}).click();
+    await page.getByLabel('Search online Library',{exact:true}).fill(name);
+    await page.getByRole('complementary',{name:'Cloud library sidebar'}).getByRole('button').filter({hasText:name}).click();
+    await expect(online.getByText('Another author’s Cloud work',{exact:true})).toBeVisible();
+    await expect(online.locator('.cloud-listing-editor')).toHaveCount(0);
+    await expect(online.getByRole('button',{name:'More publication actions'})).toHaveCount(0);
+    await expect(online.getByRole('button',{name:'Create local draft',exact:true})).toBeVisible();
+    await online.getByLabel('Cloud content version',{exact:true}).selectOption('1');
+    await expect(online.getByText(/cloud v1 · MIT/)).toBeVisible();
+    await online.getByRole('button',{name:'Like · 1',exact:true}).click();
+    await online.getByRole('button',{name:'Unlike · 2',exact:true}).click();
+    await expect(online.getByRole('button',{name:'Like · 1',exact:true})).toBeVisible();
+    await page.screenshot({path:'/tmp/f8-cloud-discover-ownership.png',fullPage:true});
+    await online.getByRole('button',{name:'Create local draft',exact:true}).click();
+    await expect(page.getByRole('textbox',{name:'Asset name',exact:true})).toHaveValue(name);
+    const links=await (await page.request.get('/api/cloud/drafts')).json() as readonly CloudDraftLink[];
+    readerDraftId=links.find((link)=>!link.owned&&link.reference.assetId===originalLink.reference.assetId)?.localAssetId;
+    expect(readerDraftId).toBeDefined();
+    expect(links.find((link)=>link.localAssetId===readerDraftId)?.reference.version).toBe(1);
+    await page.locator('.cloud-publish').getByRole('button',{name:'Publish Component to Cloud',exact:true}).click();
+    await expect(page.getByText(/creates your own Cloud work and preserves its source/)).toBeVisible();
+    await page.getByRole('button',{name:'Publish',exact:true}).click();
+    await expect(page.getByText('Published v1',{exact:true})).toBeVisible();
+    const derivative=await (await page.request.get(`/api/assets/${readerDraftId}/cloud`)).json() as CloudDraftLink;
+    expect(derivative.reference.assetId).not.toBe(originalLink.reference.assetId);
+    expect(derivative.source.assetId).toBe(originalLink.reference.assetId);
+    await page.screenshot({path:'/tmp/f8-cloud-local-draft.png',fullPage:true});
+    await page.getByRole('button',{name:'Close Publish Component to Cloud',exact:true}).click();
+    await page.getByRole('button',{name:'My Cloud',exact:true}).click();
+    await page.getByRole('complementary',{name:'Cloud library sidebar'}).getByRole('button').filter({hasText:name}).click();
+    await online.getByRole('button',{name:'More publication actions'}).click();
+    await online.getByRole('menuitem',{name:'Delete Cloud publication'}).click();
+    const deletion=page.getByRole('dialog',{name:'Delete Cloud publication',exact:true});
+    await deletion.getByRole('button',{name:'Cancel',exact:true}).click();
+    expect((await page.request.get(`/api/cloud/library/${derivative.reference.assetId}`)).ok()).toBe(true);
+    await online.getByRole('button',{name:'More publication actions'}).click();
+    await online.getByRole('menuitem',{name:'Delete Cloud publication'}).click();
+    await page.screenshot({path:`/tmp/f8-cloud-delete-${testInfo.project.name}.png`,fullPage:true});
+    await page.route(`**/api/cloud/library/${derivative.reference.assetId}`,async(route)=>{
+      if(route.request().method()!=='DELETE'){await route.continue();return;}
+      const response=await route.fetch();expect(response.ok()).toBe(true);
+      await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'test_response_lost',message:'Delete response lost'})});
+    },{times:1});
+    await deletion.getByRole('button',{name:'Delete Cloud publication',exact:true}).click();
+    await expect(deletion.getByRole('alert')).toHaveText('Delete response lost');
+    await deletion.getByRole('button',{name:'Delete Cloud publication',exact:true}).click();
+    await expect(deletion).toBeHidden();
+    await expect(page.getByText('Cloud publication deleted. Local drafts and projects are preserved.')).toBeVisible();
+    expect((await page.request.get(`/api/cloud/library/${derivative.reference.assetId}`)).status()).toBe(404);
+    expect((await page.request.get(`/api/cloud/library/${originalLink.reference.assetId}`)).ok()).toBe(true);
+    expect((await page.request.get(`/api/assets/${readerDraftId}`)).ok()).toBe(true);
+    expect(await (await page.request.get(`/api/projects/${project.projectId}`)).json()).toEqual(after);
+    await page.getByRole('button',{name:'My Local',exact:true}).click();
+    await page.locator('.asset-browser .asset-list button').filter({hasText:name}).last().click();
+    await expect(page.locator('.cloud-publish').getByRole('button',{name:'Publish Component to Cloud',exact:true})).toBeVisible();
+
   } finally {
     await page.request.put('/api/cloud/settings',{data:{baseUrl:''}});
     if(assetId)await page.request.delete(`/api/assets/${assetId}`);
+    if(readerDraftId)await page.request.delete(`/api/assets/${readerDraftId}`);
     await page.request.delete(`/api/projects/${project.projectId}`);
   }
 });

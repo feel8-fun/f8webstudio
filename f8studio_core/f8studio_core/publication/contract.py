@@ -12,6 +12,7 @@ from f8studio_core.graph.state_policy import ExcludedState
 from .canonical import HASH_PROFILE, hash_publication_value, publication_json_value
 from .component import component_document
 from .dependencies import validate_dependency_coverage
+from .definitions import portable_definition_numbers
 from .models import ComponentPublication, GraphPublication, PortableComponent, Publication, PublicationManifest
 
 
@@ -71,6 +72,7 @@ def _validate_manifest(manifest: PublicationManifest, content: GraphExchange | P
 def create_graph_publication(document: StudioDocument, manifest: PublicationManifest, *,
                              excluded_states: tuple[ExcludedState, ...] = ()) -> GraphPublication:
     content = msgspec.json.decode(export_shared_graph(document, excluded_states=excluded_states), type=GraphExchange)
+    content = portable_definition_numbers(content)
     # Published graph metadata is intentionally portable; import supplies local IDs.
     content = msgspec.structs.replace(content, metadata=ExchangeMetadata(project_id="published", graph_id="published"))
     _validate_manifest(manifest, content)
@@ -79,6 +81,7 @@ def create_graph_publication(document: StudioDocument, manifest: PublicationMani
 
 def create_component_publication(content: PortableComponent, manifest: PublicationManifest) -> ComponentPublication:
     component_document(content)
+    content = portable_definition_numbers(content)
     _validate_manifest(manifest, content)
     return ComponentPublication(manifest=manifest, content=content, content_hash=publication_hash(manifest, content))
 

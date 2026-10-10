@@ -113,10 +113,17 @@ class ProjectVersion(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
     name: str
     created_at: str
     document: StudioDocument
+    description: str = ""
 
 
 class CreateProjectVersionRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel"):
     name: str = "Snapshot"
+    description: str = ""
+
+
+class UpdateProjectVersionRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
+    name: str
+    description: str = ""
 
 
 class ShareGraphRequest(msgspec.Struct, frozen=True, kw_only=True, rename="camel", forbid_unknown_fields=True):
@@ -309,6 +316,7 @@ class AssetRepository:
                     version_id TEXT PRIMARY KEY,
                     project_id TEXT NOT NULL,
                     name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
                     created_at TEXT NOT NULL,
                     document BLOB NOT NULL,
                     FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE
@@ -317,6 +325,9 @@ class AssetRepository:
                     ON project_versions(project_id, created_at DESC);
                 """
             )
+            version_columns = {_text(row[1]) for row in connection.execute("PRAGMA table_info(project_versions)")}
+            if "description" not in version_columns:
+                connection.execute("ALTER TABLE project_versions ADD COLUMN description TEXT NOT NULL DEFAULT ''")
             # Existing parameter-only variants remain readable as Presets, with all versions intact.
             rows = connection.execute("""SELECT a.asset_id, v.content FROM local_assets a JOIN local_asset_versions v
                 ON v.asset_id = a.asset_id AND v.version = a.current_version WHERE a.kind = 'variant'""").fetchall()
@@ -552,7 +563,7 @@ class AssetRepository:
             raise FileExistsError(f"asset already exists or export is invalid: {asset_id}") from exc
         return self.get(asset_id)
 
-    def create_project_version(self, project_id: str, name: str, document: StudioDocument) -> ProjectVersion:
+    def create_project_version(self, project_id: str, name: str, document: StudioDocument, description: str = "") -> ProjectVersion:
         validate_document(document)
         if document.project_id != project_id:
             raise InvalidRequestError("version document projectId does not match route project id")
@@ -563,18 +574,19 @@ class AssetRepository:
             name=clean_name,
             created_at=_now(),
             document=document,
+            description=description.strip(),
         )
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO project_versions(version_id, project_id, name, created_at, document) VALUES (?, ?, ?, ?, ?)",
-                (version.version_id, project_id, version.name, version.created_at, msgspec.json.encode(document)),
+                "INSERT INTO project_versions(version_id, project_id, name, description, created_at, document) VALUES (?, ?, ?, ?, ?, ?)",
+                (version.version_id, project_id, version.name, version.description, version.created_at, msgspec.json.encode(document)),
             )
         return version
 
     def list_project_versions(self, project_id: str) -> tuple[ProjectVersion, ...]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT version_id, name, created_at, document FROM project_versions WHERE project_id = ? ORDER BY created_at DESC",
+                "SELECT version_id, name, created_at, document, description FROM project_versions WHERE project_id = ? ORDER BY created_at DESC, version_id",
                 (project_id,),
             ).fetchall()
         return tuple(
@@ -584,6 +596,7 @@ class AssetRepository:
                 name=_text(row[1]),
                 created_at=_text(row[2]),
                 document=decode_document(_bytes(row[3])),
+                description=_text(row[4]),
             )
             for row in rows
         )
@@ -594,6 +607,27 @@ class AssetRepository:
         if found is None:
             raise NotFoundError(f"project version not found: {version_id}")
         return found
+
+    def update_project_version(self, project_id: str, version_id: str, request: UpdateProjectVersionRequest) -> ProjectVersion:
+        name = request.name.strip()
+        if not name:
+            raise InvalidRequestError("snapshot name must be non-empty")
+        with self._connect() as connection:
+            updated = connection.execute(
+                "UPDATE project_versions SET name = ?, description = ? WHERE project_id = ? AND version_id = ?",
+                (name, request.description.strip(), project_id, version_id),
+            )
+            if updated.rowcount == 0:
+                raise NotFoundError(f"project version not found: {version_id}")
+        return self.get_project_version(project_id, version_id)
+
+    def delete_project_version(self, project_id: str, version_id: str) -> None:
+        with self._connect() as connection:
+            deleted = connection.execute(
+                "DELETE FROM project_versions WHERE project_id = ? AND version_id = ?", (project_id, version_id),
+            )
+            if deleted.rowcount == 0:
+                raise NotFoundError(f"project version not found: {version_id}")
 
     @staticmethod
     def _summary(row: tuple[object, ...]) -> AssetSummary:
@@ -623,5 +657,6 @@ __all__ = [
     "CreateProjectVersionRequest",
     "ProjectVersion",
     "UpdateAssetRequest",
+    "UpdateProjectVersionRequest",
     "VariantContent",
 ]

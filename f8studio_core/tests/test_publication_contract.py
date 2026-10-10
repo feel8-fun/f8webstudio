@@ -134,7 +134,7 @@ def test_dependency_diagnostics_and_coverage_are_explicit_and_preview_is_availab
 
 
 def test_shared_hash_golden_vectors_and_numeric_rejections() -> None:
-    fixtures = json.loads((FIXTURES / "hash-v1.json").read_text())
+    fixtures = json.loads((FIXTURES / "hash-v1.json").read_text(encoding="utf-8"))
     for fixture in fixtures:
         assert canonical_publication_bytes(fixture["value"]).decode() == fixture["canonical"]
         assert hash_publication_value(fixture["value"]) == fixture["sha256"]

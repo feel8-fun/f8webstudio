@@ -1,3 +1,4 @@
+import { createEmptyProject } from './projectFixture';
 import { mockPresentation } from './presentationFixture';
 import { expect, test, type Page } from '@playwright/test';
 
@@ -10,8 +11,8 @@ async function connectHandles(
 ): Promise<void> {
   const source = page.locator(`[data-nodeid="${sourceNodeId}"][data-handleid="${sourcePortId}"]`);
   const target = page.locator(`[data-nodeid="${targetNodeId}"][data-handleid="${targetPortId}"]`);
-  await source.click({ force: true });
-  await target.click({ force: true });
+  await source.click();
+  await target.click();
 }
 
 async function expectEdgeTouchesHandles(page: Page, sourceNodeId: string, sourcePortId: string, targetNodeId: string, targetPortId: string): Promise<void> {
@@ -83,9 +84,7 @@ async function zoomOutViewport(page: Page): Promise<string> {
 }
 
 async function fitHandlesInViewport(page: Page, nodeIds: readonly string[]): Promise<void> {
-  const initial = await viewportTransform(page);
   await page.locator('.react-flow__controls-fitview').click();
-  await expect.poll(() => viewportTransform(page)).not.toBe(initial);
   await expect.poll(async () => {
     const canvasBox = await page.locator('.react-flow').boundingBox();
     if (canvasBox === null) return false;
@@ -153,7 +152,7 @@ test('creates a graph node and restores the persisted project after reload', asy
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
 
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+  await createEmptyProject(page);
   await expect(page.locator('.save-state')).toHaveText('Saved');
   const projectId = await page.locator('#project-select').inputValue();
   expect(projectId).not.toBe('');
@@ -202,7 +201,7 @@ test('creates a graph node and restores the persisted project after reload', asy
 test('adds services in the visible viewport and operators to the selected service', async ({ page }, testInfo) => {
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+  await createEmptyProject(page);
   await page.getByLabel('Search nodes').fill('f8.pyengine');
   const pyEngine = page.locator('.catalog-list button:not(:disabled)').filter({ hasText: 'f8.pyengine' });
   await pyEngine.click();
@@ -274,7 +273,7 @@ test('shows a live 3D node preview and opens its focused view in the same tab', 
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+  await createEmptyProject(page);
   await page.getByLabel('Search nodes').fill('3D Viz');
   await page.locator('.catalog-list button:not(:disabled)').filter({ hasText: '3D Viz' }).click();
   const operator = page.locator('.react-flow__node.flow-node-operator');
@@ -327,7 +326,7 @@ test('keeps one WebRTC session when opening a video node in the focused output v
   });
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+  await createEmptyProject(page);
   await page.getByLabel('Search nodes').fill('Video Viz');
   await page.locator('.catalog-list button:not(:disabled)').filter({ hasText: 'Video Viz' }).click();
   const operator = page.locator('.react-flow__node.flow-node-operator');
@@ -363,9 +362,7 @@ test('resizes service canvases and restores their persisted dimensions', async (
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
 
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
   await page.getByLabel('Search nodes').fill('f8.pyengine');
   await page.getByRole('button', { name: /PyEngine/ }).click();
@@ -453,9 +450,7 @@ test('nests operators in compatible services and cascades container deletion', a
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
 
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
   await page.getByLabel('Search nodes').fill('f8.pyengine');
   const pyEngineButton = page.getByRole('button', { name: /PyEngine/ });
@@ -634,9 +629,7 @@ test('edits fixed operator presentation and remembers Inspector width', async ({
   test.skip(testInfo.project.name === 'mobile', 'Inspector is hidden in the mobile graph layout');
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
   await page.getByLabel('Search nodes').fill('f8.pyengine');
   await page.locator('.catalog-list button:not(:disabled)').filter({ hasText: 'f8.pyengine' }).first().click();
@@ -699,9 +692,7 @@ test('edits inline state and configures typed exec and data connections', async 
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
 
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
 
   await page.getByLabel('Search nodes').fill('f8.pyengine');
@@ -816,9 +807,7 @@ test('edits inline state and configures typed exec and data connections', async 
 test('runs parameterless IM Player commands directly and opens parameter dialogs', async ({ page }, testInfo) => {
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
 
   await page.getByLabel('Search nodes').fill('f8.implayer');
   await page.locator('.catalog-list button:not(:disabled)').filter({ hasText: 'f8.implayer' }).first().click();
@@ -858,9 +847,7 @@ test('runs parameterless IM Player commands directly and opens parameter dialogs
 test('keeps long inline state editors within fixed node rows', async ({ page }, testInfo) => {
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
 
   await page.getByLabel('Search nodes').fill('f8.pyengine');
   await page.locator('.catalog-list button:not(:disabled)').filter({ hasText: 'f8.pyengine' }).first().click();
@@ -897,9 +884,7 @@ test('keeps one RW state label and preserves its editor when connected', async (
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
 
   await page.getByLabel('Search nodes').fill('f8.pyengine');
@@ -944,6 +929,7 @@ test('keeps one RW state label and preserves its editor when connected', async (
       targetPortId: port(operators[1]!, 'input'),
     };
   }, projectId);
+  await fitHandlesInViewport(page, [statePorts.sourceNodeId, statePorts.targetNodeId, statePorts.replacementNodeId]);
   const targetNode = page.locator(`.react-flow__node[data-id="${statePorts.targetNodeId}"]`);
   const targetRow = targetNode.locator('.port-row-shared-state').filter({ hasText: 'low_cutoff' });
   await expect(targetRow).toHaveCount(1);
@@ -993,9 +979,7 @@ test('builds, deploys, observes, modifies, and restores a built-in Studio graph'
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
 
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
 
   await page.getByLabel('Search nodes').fill('f8.value_stepper');
@@ -1076,7 +1060,7 @@ test('adds nodes with Tab search and copies a port type into Patch Hub', async (
   test.skip(testInfo.project.name === 'mobile', 'Keyboard and right mouse button workflow');
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+  await createEmptyProject(page);
   await expect(page.locator('.save-state')).toHaveText('Saved');
   const addQuick = async (query: string, label: RegExp) => {
     await page.locator('.react-flow__pane').click({ position: { x: 20, y: 20 } });

@@ -32,6 +32,75 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: Error) => void;
+  const promise = new Promise<T>((onResolve, onReject) => { resolve = onResolve; reject = onReject; });
+  return { promise, resolve, reject };
+}
+
+const created: ProjectRecord = {
+  ...initial, projectId: 'new', name: 'New project',
+  document: { ...initial.document, projectId: 'new', graphId: 'new' },
+};
+
+test('creating a project owns selection even when the initial project list arrives later', async () => {
+  const listing = deferred<readonly ProjectRecord[]>();
+  api.fetchProjects.mockReturnValueOnce(listing.promise).mockResolvedValue([initial, created]);
+  api.createProject.mockResolvedValue(created);
+  const { result } = renderHook(() => useGraphProject(reset, report));
+  await act(async () => { await result.current.addProject(); });
+  await act(async () => { listing.resolve([initial]); });
+  expect(result.current.selectedProjectId).toBe('new');
+  expect(result.current.project).toEqual(created);
+  expect(result.current.projects).toEqual([initial, created]);
+  expect(result.current.catalog).not.toBeNull();
+  expect(api.fetchProject).not.toHaveBeenCalled();
+});
+
+test('an initial project response cannot replace a newly created project', async () => {
+  const loading = deferred<ProjectRecord>();
+  api.fetchProject.mockReturnValueOnce(loading.promise);
+  api.createProject.mockResolvedValue(created);
+  const { result } = renderHook(() => useGraphProject(reset, report));
+  await waitFor(() => expect(api.fetchProject).toHaveBeenCalledWith('p', expect.any(AbortSignal)));
+  await act(async () => { await result.current.addProject(); });
+  await act(async () => { loading.resolve(initial); });
+  expect(result.current.selectedProjectId).toBe('new');
+  expect(result.current.project).toEqual(created);
+  expect(result.current.busy).toBe(false);
+});
+
+test('superseded selections and background reloads cannot overwrite the latest selection or its busy state', async () => {
+  const { result } = renderHook(() => useGraphProject(reset, report));
+  await waitFor(() => expect(result.current.project).toEqual(initial));
+  const staleReload = deferred<ProjectRecord>();
+  const failedSelection = deferred<ProjectRecord>();
+  const latestSelection = deferred<ProjectRecord>();
+  api.fetchProject.mockReturnValueOnce(staleReload.promise)
+    .mockReturnValueOnce(failedSelection.promise).mockReturnValueOnce(latestSelection.promise);
+  let reloading!: Promise<ProjectRecord>;
+  let failed!: Promise<void>;
+  let latest!: Promise<void>;
+  act(() => {
+    reloading = result.current.reloadProject('p');
+    failed = result.current.selectProject('old');
+    latest = result.current.selectProject('new');
+  });
+  await act(async () => {
+    failedSelection.reject(new Error('old selection failed'));
+    staleReload.resolve(initial);
+    await Promise.all([failed, reloading]);
+  });
+  expect(result.current.selectedProjectId).toBe('new');
+  expect(result.current.project).toBeNull();
+  expect(result.current.busy).toBe(true);
+  expect(result.current.error).toBeNull();
+  await act(async () => { latestSelection.resolve(created); await latest; });
+  expect(result.current.project).toEqual(created);
+  expect(result.current.busy).toBe(false);
+});
+
 test('queued edits use the revision returned by the previous edit and clear saving', async () => {
   const { result } = renderHook(() => useGraphProject(reset, report));
   await waitFor(() => expect(result.current.project).toEqual(initial));

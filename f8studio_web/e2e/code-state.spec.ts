@@ -1,12 +1,11 @@
+import { createEmptyProject } from './projectFixture';
 import { expect, test } from '@playwright/test';
 
 test('edits a code state in one popup and invalidates it after node deletion', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'The graph Inspector is hidden on mobile');
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
   let otherProjectId: string | null = null;
   try {
@@ -87,7 +86,7 @@ test('edits a code state in one popup and invalidates it after node deletion', a
     }).toBe('print("from popup")');
 
     await expect(popup).toHaveURL(new RegExp(`project=${projectId}`));
-    await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
+    await createEmptyProject(page);
     await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(projectId);
     otherProjectId = await page.locator('#project-select').inputValue();
     await expect(popup).toHaveURL(new RegExp(`project=${projectId}`));

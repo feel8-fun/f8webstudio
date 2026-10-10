@@ -1,11 +1,10 @@
+import { createEmptyProject } from './projectFixture';
 import { expect, test } from '@playwright/test';
 
 test('agent window stays bound to the graph project and reopens on the same session', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
 
   try {

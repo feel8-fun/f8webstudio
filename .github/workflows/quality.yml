@@ -55,4 +55,4 @@ jobs:
       - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web ci
       - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web run build
       - run: pixi run --locked --manifest-path .ci/pixi.toml npm --prefix f8studio_web run test
-      - run: pixi run --locked --manifest-path .ci/pixi.toml python -m pip wheel --no-deps --no-build-isolation -w build/wheels f8studio_core f8studio_server
+      - run: pixi run --locked --manifest-path .ci/pixi.toml python -m pip wheel --no-deps --no-build-isolation -w build/wheels ./f8studio_core ./f8studio_server

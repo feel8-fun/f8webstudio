@@ -267,7 +267,7 @@ async function benchmarkScenario(
   edgeCount: number,
 ): Promise<GraphScenarioResult> {
   await page.goto('/api/health');
-  await page.evaluate(([key, projectId]) => localStorage.setItem(key, projectId), [SELECTED_PROJECT_KEY, fixture.projectId]);
+  await page.evaluate(([key, projectId]) => localStorage.setItem(key, projectId), [SELECTED_PROJECT_KEY, fixture.projectId] as const);
   const renderStarted = performance.now();
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();

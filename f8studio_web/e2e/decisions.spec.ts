@@ -6,7 +6,7 @@ test('adds a typed Decision node and exposes its separate provider settings', as
   const connection = await request.post('/api/agents/connections', { data: {
     displayName: 'Decision host', protocol: 'systemone', endpoint: 'http://127.0.0.1:11434/v1',
     model: 'decision-model', models: ['decision-model'],
-    modelCapabilities: [{ modelId: 'decision-model', imageInput: true, thinking: null }],
+    modelCapabilities: [{ modelId: 'decision-model', imageInput: true, thinking: null, imageSource: 'manual' }],
   } });
   expect(connection.status()).toBe(201);
   const providerId = (await connection.json() as { providerId: string }).providerId;
@@ -40,7 +40,7 @@ test('adds a typed Decision node and exposes its separate provider settings', as
     const chatProviders = await (await request.get('/api/agents/providers')).json() as { providerId: string }[];
     expect(chatProviders.some((provider) => provider.providerId === providerId)).toBe(false);
   } finally {
-    expect((await request.delete(`/api/agents/providers/${providerId}`)).status()).toBe(204);
+    expect((await request.delete(`/api/agents/connections/${providerId}`)).status()).toBe(204);
     expect((await request.delete(`/api/projects/${projectId}`)).status()).toBe(204);
   }
 });

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import os
 import re
 import subprocess
 from collections.abc import Generator
@@ -281,7 +282,8 @@ def test_real_worker_login_publication_preview_atomic_insert_undo_and_restart_re
         try:
             await login(cloud.client,cloud_origin)
             assert cloud.client.status().user is not None
-            assert (tmp_path / "studio/cloud-connection.json").stat().st_mode & 0o777 == 0o600
+            if os.name != "nt":
+                assert (tmp_path / "studio/cloud-connection.json").stat().st_mode & 0o777 == 0o600
             request = CloudPublishRequest(request_id="publish",local_version=1,license="MIT")
             result = await cloud.publish(asset_id,request)
             assert result.version == 1

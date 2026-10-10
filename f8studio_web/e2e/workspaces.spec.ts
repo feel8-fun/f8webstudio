@@ -1,3 +1,4 @@
+import { createEmptyProject } from './projectFixture';
 import { mockPresentation } from './presentationFixture';
 import { expect, test } from '@playwright/test';
 
@@ -131,9 +132,7 @@ test('configures and restores a native global hotkey binding', async ({ page }, 
   test.skip(testInfo.project.name === 'mobile', 'Global hotkey setup is verified in the desktop Inspector');
   await page.goto('/');
   await expect(page.locator('.connection-online')).toBeVisible();
-  const previousProjectId = await page.locator('#project-select').inputValue();
-  await page.locator('.project-control').getByRole('button', { name: 'New project' }).click();
-  await expect.poll(() => page.locator('#project-select').inputValue()).not.toBe(previousProjectId);
+  await createEmptyProject(page);
   const projectId = await page.locator('#project-select').inputValue();
 
   await page.evaluate(async () => {

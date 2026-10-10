@@ -24,6 +24,8 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
   const [deployment, setDeployment] = useState<DeployJob | null>(null);
   const [mutations] = useState(() => new MutationQueue());
   const projectRef = useRef<ProjectRecord | null>(null);
+  const selectionGeneration = useRef(0);
+  const selectedIdRef = useRef<string | null>(null);
   const projectId = project?.projectId ?? null;
   projectRef.current = project;
 
@@ -34,45 +36,57 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     setProject((current) => current?.projectId === record.projectId ? { ...current, ...metadata } : current);
   }, []);
 
-  const reloadProject = useCallback(async (projectId: string) => {
+  const beginSelection = useCallback((id: string | null) => {
+    const generation = ++selectionGeneration.current;
+    selectedIdRef.current = id;
+    projectRef.current = null;
+    setSelectedProjectId(id);
+    setProject(null);
+    setDeployment(null);
+    return generation;
+  }, []);
+
+  const reloadProject = useCallback(async (projectId: string, signal?: AbortSignal) => {
+    const generation = selectionGeneration.current;
     const [loaded, latestDeployment] = await Promise.all([
-      fetchProject(projectId),
-      fetchLatestDeployment(projectId),
+      fetchProject(projectId, signal),
+      fetchLatestDeployment(projectId, signal),
     ]);
-    setSelectedProjectId(projectId);
-    setProject(loaded);
-    setDeployment(latestDeployment);
+    if (!signal?.aborted && generation === selectionGeneration.current && selectedIdRef.current === projectId) {
+      projectRef.current = loaded;
+      setProject(loaded);
+      setDeployment(latestDeployment);
+    }
     return loaded;
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
+    const generation = selectionGeneration.current;
     const load = async () => {
       try {
         const [availableProjects, loadedCatalog] = await Promise.all([
           fetchProjects(controller.signal),
           fetchCatalog(controller.signal),
         ]);
-        setProjects(availableProjects);
+        if (controller.signal.aborted) return;
         setCatalog(loadedCatalog);
+        if (generation !== selectionGeneration.current) return;
+        setProjects(availableProjects);
         const rememberedId = localStorage.getItem(SELECTED_PROJECT_KEY);
         const initial = availableProjects.find((item) => item.projectId === rememberedId) ?? availableProjects.at(-1);
         if (initial !== undefined) {
+          selectedIdRef.current = initial.projectId;
           setSelectedProjectId(initial.projectId);
-          const [record, latestDeployment] = await Promise.all([
-            fetchProject(initial.projectId, controller.signal),
-            fetchLatestDeployment(initial.projectId, controller.signal),
-          ]);
-          setProject(record);
-          setDeployment(latestDeployment);
+          await reloadProject(initial.projectId, controller.signal);
         }
       } catch (reason) {
-        if (!controller.signal.aborted) setError(errorMessage(reason));
+        if (!controller.signal.aborted && generation === selectionGeneration.current) setError(errorMessage(reason));
       }
     };
     void load();
-    return () => controller.abort();
-  }, []);
+    return () => { controller.abort(); ++selectionGeneration.current; };
+  }, [reloadProject]);
 
   useEffect(() => {
     if (selectedProjectId !== null) localStorage.setItem(SELECTED_PROJECT_KEY, selectedProjectId);
@@ -84,30 +98,30 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     const refresh = () => {
         void fetchProject(projectId).then((record) => {
           const current = projectRef.current;
-          if (!disposed && (current === null || documentIsNewer(record.document, current.document))) {
+          if (!disposed && selectedIdRef.current === projectId && (current === null || documentIsNewer(record.document, current.document))) {
             setProject(record);
           }
         }, (reason: unknown) => {
-          if (!disposed) setError((current) => current ?? errorMessage(reason));
+          if (!disposed && selectedIdRef.current === projectId) setError((current) => current ?? errorMessage(reason));
         });
     };
     const unsubscribe = studioEvents.subscribe((envelope) => {
+        if (disposed || selectedIdRef.current !== projectId) return;
         if (envelope.type === 'project.updated' && envelope.scope === `project:${projectId}` && isProjectRecord(envelope.payload)) {
           applyProjectMetadata(envelope.payload);
           return;
         }
         if (envelope.type === 'project.deleted' && envelope.scope === `project:${projectId}`) {
           setProjects((current) => current.filter((item) => item.projectId !== projectId));
-          setProject(null);
-          setSelectedProjectId(null);
-          setDeployment(null);
+          const generation = beginSelection(null);
           localStorage.removeItem(SELECTED_PROJECT_KEY);
           resetSelection();
           void fetchProjects().then(async (available) => {
+            if (generation !== selectionGeneration.current) return;
             setProjects(available);
             const next = available[0];
             if (next !== undefined) {
-              setSelectedProjectId(next.projectId);
+              beginSelection(next.projectId);
               await reloadProject(next.projectId);
             }
           }).catch((reason: unknown) => setError(errorMessage(reason)));
@@ -125,7 +139,7 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
         });
     }, refresh);
     return () => { disposed = true; unsubscribe(); };
-  }, [projectId, reloadProject, resetSelection, applyProjectMetadata]);
+  }, [projectId, reloadProject, resetSelection, applyProjectMetadata, beginSelection]);
 
   const mutateProject = useCallback((targetId: string, operation: (current: ProjectRecord) => Promise<ProjectRecord>): Promise<void> => {
     setSaving(true);
@@ -173,33 +187,36 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
   const selectProject = useCallback(async (projectId: string) => {
     setBusy(true);
     setError(null);
-    setSelectedProjectId(projectId);
-    setProject(null);
-    setDeployment(null);
+    const generation = beginSelection(projectId);
     resetSelection();
     try {
       await reloadProject(projectId);
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (generation === selectionGeneration.current) setError(errorMessage(reason));
     } finally {
-      setBusy(false);
+      if (generation === selectionGeneration.current) setBusy(false);
     }
-  }, [reloadProject, resetSelection]);
+  }, [reloadProject, resetSelection, beginSelection]);
 
   const addProject = useCallback(async () => {
     setBusy(true);
     setError(null);
+    const generation = ++selectionGeneration.current;
     try {
       const created = await createProject(`Untitled ${projects.length + 1}`);
-      setProjects(await fetchProjects());
+      const available = await fetchProjects();
+      if (generation !== selectionGeneration.current) return;
+      setProjects(available);
+      selectedIdRef.current = created.projectId;
       setSelectedProjectId(created.projectId);
+      projectRef.current = created;
       setProject(created);
       setDeployment(null);
       resetSelection();
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (generation === selectionGeneration.current) setError(errorMessage(reason));
     } finally {
-      setBusy(false);
+      if (generation === selectionGeneration.current) setBusy(false);
     }
   }, [projects.length, resetSelection]);
 
@@ -212,9 +229,7 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     try {
       await deleteProject(selected.projectId);
       setProjects((current) => current.filter((item) => item.projectId !== selected.projectId));
-      setProject(null);
-      setSelectedProjectId(null);
-      setDeployment(null);
+      beginSelection(null);
       localStorage.removeItem(SELECTED_PROJECT_KEY);
       const available = await fetchProjects();
       setProjects(available);
@@ -228,7 +243,7 @@ export function useGraphProject(resetSelection: () => void, reportCommand: (kind
     } finally {
       setBusy(false);
     }
-  }, [busy, projects, saving, selectProject, selectedProjectId, resetSelection, mutations]);
+  }, [busy, projects, saving, selectProject, selectedProjectId, resetSelection, mutations, beginSelection]);
 
   const renameProject = useCallback(async (name: string): Promise<boolean> => {
     const current = projectRef.current;

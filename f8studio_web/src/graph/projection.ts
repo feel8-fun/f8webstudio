@@ -4,7 +4,6 @@ import type { GraphNode, GraphOperation, NodeLayout, StudioDocument } from '../a
 import { isPatchHub, nodePortRows } from './portRows';
 import { isBackdrop, isNote, isResizableOperator, operatorMinimumSize } from './nodePresentation';
 
-export const SERVICE_WIDTH = 524;
 export const SERVICE_MIN_HEIGHT = 240;
 export const COMPACT_SERVICE_WIDTH = 280;
 export const OPERATOR_WIDTH = 240;
@@ -15,8 +14,10 @@ export const VIDEO_PREVIEW_HEIGHT = 135;
 export const PORT_ROW_HEIGHT = 24;
 export const CONTAINER_INSET_X = 16;
 export const CONTAINER_INSET_Y = 76;
-export const OPERATOR_GAP_X = 12;
+// Handles have a 24px hit area; adjacent columns must leave that area clear.
+export const OPERATOR_GAP_X = 24;
 export const OPERATOR_GAP_Y = 16;
+export const SERVICE_WIDTH = OPERATOR_WIDTH * 2 + CONTAINER_INSET_X * 2 + OPERATOR_GAP_X;
 export const STUDIO_SERVICE_CLASS = 'f8.pystudio';
 
 const NODE_VERTICAL_CHROME = 40;
